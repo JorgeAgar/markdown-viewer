@@ -126,7 +126,6 @@ with tempfile.TemporaryDirectory(prefix="markdown-viewer-smoke-") as temporary:
         }}})["sessionId"]
         wait_for(lambda: execute("return document.querySelector('#status').textContent === 'Listo para leer'"))
         assert execute("return document.querySelector('#document').hidden")
-        screenshot("empty.png")
         print("PASS: opening without a file shows the minimal file picker")
 
         execute("document.querySelector('#empty-open').click()")
