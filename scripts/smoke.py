@@ -1,6 +1,6 @@
 """Exercise the actual Linux WebView through tauri-driver, using stdlib only.
 
-Prerequisites: cargo install tauri-driver --locked; WebKitWebDriver; Xvfb.
+Prerequisites: cargo install tauri-driver --locked; WebKitWebDriver; Xvfb; xdotool.
 Run: xvfb-run -a dbus-run-session -- python3 scripts/smoke.py
 """
 
@@ -128,6 +128,20 @@ with tempfile.TemporaryDirectory(prefix="markdown-viewer-smoke-") as temporary:
         assert execute("return document.querySelector('#document').hidden")
         screenshot("empty.png")
         print("PASS: opening without a file shows the minimal file picker")
+
+        execute("document.querySelector('#empty-open').click()")
+        def picker_window():
+            result = subprocess.run(["xdotool", "search", "--onlyvisible", "--name", "^Abrir Markdown$"], capture_output=True, text=True)
+            return result.stdout.strip().split()[-1] if result.returncode == 0 else None
+
+        window = wait_for(picker_window)
+        subprocess.run(["xdotool", "windowfocus", "--sync", window], check=True)
+        subprocess.run(["xdotool", "key", "--window", window, "ctrl+l"], check=True)
+        subprocess.run(["xdotool", "type", "--window", window, "--clearmodifiers", str(ROOT / "examples/bienvenido.md")], check=True)
+        subprocess.run(["xdotool", "key", "--window", window, "Return"], check=True)
+        wait_for(lambda: execute("return document.querySelector('#filename').textContent === 'bienvenido.md'"))
+        assert execute("return !document.querySelector('#open').disabled")
+        print("PASS: selecting a file through the native picker loads the document")
     finally:
         if session:
             call("DELETE", f"/session/{session}")

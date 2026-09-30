@@ -126,15 +126,21 @@ document.addEventListener('dragover', (event) => event.preventDefault());
 document.addEventListener('drop', (event) => event.preventDefault());
 
 async function start() {
+  const initialRequest = requestId;
   // Listen before consuming the pending path so OS open events cannot be lost
   // while the WebView is starting.
-  await listen('file-pending', () => openDocument(() => invoke('take_pending_document')));
-  await listen('tauri://drag-enter', () => { dropZone.hidden = false; });
-  await listen('tauri://drag-leave', () => { dropZone.hidden = true; });
-  await listen('tauri://drag-drop', ({ payload }) => {
-    dropZone.hidden = true;
-    if (payload.paths?.[0]) openDocument(() => invoke('open_document', { path: payload.paths[0] }));
-  });
-  await openDocument(() => invoke('take_pending_document'));
+  await Promise.all([
+    listen('file-pending', () => openDocument(() => invoke('take_pending_document'))),
+    listen('tauri://drag-enter', () => { dropZone.hidden = false; }),
+    listen('tauri://drag-leave', () => { dropZone.hidden = true; }),
+    listen('tauri://drag-drop', ({ payload }) => {
+      dropZone.hidden = true;
+      if (payload.paths?.[0]) openDocument(() => invoke('open_document', { path: payload.paths[0] }));
+    }),
+  ]);
+  const initialDocument = await invoke('take_pending_document');
+  if (initialDocument && requestId === initialRequest) {
+    await openDocument(() => Promise.resolve(initialDocument));
+  }
 }
 start().catch(showError);

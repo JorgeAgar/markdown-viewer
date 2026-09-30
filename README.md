@@ -58,11 +58,11 @@ npm run check
 
 Las pruebas cubren el renderizado, la limpieza de HTML activo, rutas con espacios y Unicode, archivos inválidos, límites de tamaño e imágenes locales fuera de la carpeta del documento.
 
-En Linux, `scripts/smoke.py` prueba la aplicación compilada dentro de su WebView, incluyendo una segunda apertura, imágenes y manejo de errores. Requiere `tauri-driver`, `WebKitWebDriver` y Xvfb:
+En Linux, `scripts/smoke.py` prueba la aplicación compilada dentro de su WebView, incluyendo una segunda apertura, imágenes, el selector nativo y manejo de errores. Requiere `tauri-driver`, `WebKitWebDriver`, Xvfb y xdotool:
 
 ```sh
 cargo install tauri-driver --locked
-sudo apt-get install -y webkit2gtk-driver xvfb
+sudo apt-get install -y webkit2gtk-driver xvfb xdotool
 xvfb-run -a dbus-run-session -- python3 scripts/smoke.py
 ```
 

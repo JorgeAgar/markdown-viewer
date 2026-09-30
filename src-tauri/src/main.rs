@@ -79,11 +79,15 @@ async fn open_document(app: tauri::AppHandle, path: String) -> Result<document::
 async fn choose_document(app: tauri::AppHandle) -> Result<Option<document::Document>, String> {
     let picker = app.clone();
     let selection = tauri::async_runtime::spawn_blocking(move || {
-        picker
+        let mut dialog = picker
             .dialog()
             .file()
-            .add_filter("Markdown", &["md", "markdown", "mdown", "mkd"])
-            .blocking_pick_file()
+            .set_title("Abrir Markdown")
+            .add_filter("Markdown", &["md", "markdown", "mdown", "mkd"]);
+        if let Some(window) = picker.get_webview_window("main") {
+            dialog = dialog.set_parent(&window);
+        }
+        dialog.blocking_pick_file()
     })
     .await
     .map_err(|_| "No se pudo abrir el selector de archivos.".to_owned())?;
