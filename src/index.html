@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Markdown Viewer</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <header class="toolbar">
+      <div class="identity">
+        <svg class="app-icon" width="28" height="28" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="currentColor"/><path d="M7 22V10h3l4 5 4-5h3v12h-3v-7l-4 5-4-5v7H7Z" fill="var(--paper)"/><path d="M25 11v8m-3-3 3 3 3-3" fill="none" stroke="var(--paper)" stroke-width="2"/></svg>
+        <div class="file-label"><span id="filename">Markdown Viewer</span><span id="file-detail">Solo lectura</span></div>
+      </div>
+      <button id="open" class="open-button" title="Abrir archivo (Ctrl+O / ⌘O)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v9H3V7Z"/><path d="M3 11h18"/></svg>Abrir archivo</button>
+    </header>
+    <div id="error" class="error" role="alert" hidden></div>
+    <main id="reader" tabindex="-1">
+      <section id="empty" class="empty-state">
+        <div class="document-icon" aria-hidden="true"><svg width="72" height="88" viewBox="0 0 72 88" fill="none"><path d="M12 1h31l17 17v62a7 7 0 0 1-7 7H12a7 7 0 0 1-7-7V8a7 7 0 0 1 7-7Z" fill="var(--paper)" stroke="currentColor"/><path d="M43 1v17h17M20 36h25M20 44h32M20 52h24" stroke="currentColor" stroke-linecap="round"/><rect x="26" y="62" width="39" height="23" rx="5" fill="var(--accent)"/><text x="45.5" y="77" text-anchor="middle" fill="white" font-size="12" font-family="monospace">.md</text></svg></div>
+        <h1>Abre tu Markdown</h1>
+        <p>Arrastra un archivo aquí<br />o selecciónalo para empezar a leer.</p>
+        <button id="empty-open" class="primary-button">Seleccionar archivo<span aria-hidden="true">↗</span></button>
+        <span class="shortcut"><kbd id="modifier">Ctrl</kbd><span>+</span><kbd>O</kbd></span>
+      </section>
+      <article id="document" class="markdown" aria-label="Documento Markdown" hidden></article>
+    </main>
+    <footer><span id="status" role="status">Listo para leer</span><span>.md · .markdown · .mdown · .mkd</span></footer>
+    <div id="drop-zone" class="drop-zone" hidden><span>Suelta el archivo para abrirlo</span></div>
+  </body>
+</html>

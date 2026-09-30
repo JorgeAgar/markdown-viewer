@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="180" viewBox="0 0 640 180">
+  <rect width="640" height="180" rx="12" fill="#edf0e7"/>
+  <rect x="270" y="25" width="100" height="130" rx="8" fill="#faf9f6" stroke="#9aab93"/>
+  <path d="M289 55h62m-62 17h48m-48 17h62m-62 17h40" stroke="#9aab93" stroke-width="4" stroke-linecap="round"/>
+  <rect x="323" y="121" width="70" height="30" rx="5" fill="#52715a"/>
+  <text x="358" y="141" text-anchor="middle" fill="#fff" font-size="17" font-family="monospace">.md</text>
+</svg>
