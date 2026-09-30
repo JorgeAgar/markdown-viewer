@@ -63,7 +63,7 @@ En Linux, `scripts/smoke.py` prueba la aplicación compilada dentro de su WebVie
 ```sh
 cargo install tauri-driver --locked
 sudo apt-get install -y webkit2gtk-driver xvfb
-dbus-run-session -- xvfb-run -a python3 scripts/smoke.py
+xvfb-run -a dbus-run-session -- python3 scripts/smoke.py
 ```
 
 El paquete del driver se llama `webkitgtk-webdriver` en versiones recientes de Ubuntu. Las capturas y los registros de la prueba quedan en `artifacts/`, que no se sube al repositorio.
@@ -81,7 +81,7 @@ La medición comienza al entrar en `main` y termina tras dos llamadas a `request
 
 No se muestra una ventana de carga ni se espera por recursos de red para mostrar el texto. Las imágenes se cargan con `loading="lazy"`. Las imágenes locales se leen al convertir el documento, por lo que su tamaño sí afecta a la apertura.
 
-La primera ejecución del script no garantiza cachés frías. Para comparar equipos, mide también después de reiniciar, usa el mismo archivo y registra sistema, CPU y tamaño del documento. En Linux sin pantalla puedes usar `dbus-run-session -- xvfb-run -a npm run benchmark`, pero esos resultados no representan una sesión de escritorio real.
+La primera ejecución del script no garantiza cachés frías. Para comparar equipos, mide también después de reiniciar, usa el mismo archivo y registra sistema, CPU y tamaño del documento. En Linux sin pantalla puedes usar `xvfb-run -a dbus-run-session -- npm run benchmark`, pero esos resultados no representan una sesión de escritorio real.
 
 ## Límites del prototipo
 

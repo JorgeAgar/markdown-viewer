@@ -58,12 +58,13 @@ fn image_source(source: &str, directory: &Path, remaining: &mut usize) -> Option
     if source.starts_with(['/', '\\']) {
         return None;
     }
+    let directory = directory.canonicalize().ok()?;
     // URL joining decodes spaces and UTF-8 in Markdown image paths. Canonicalization
     // also prevents symlinks and ../ from escaping the document's directory.
-    let base = Url::from_directory_path(directory).ok()?;
+    let base = Url::from_directory_path(&directory).ok()?;
     let path = base.join(source).ok()?.to_file_path().ok()?;
     let path = path.canonicalize().ok()?;
-    if !path.starts_with(directory) {
+    if !path.starts_with(&directory) {
         return None;
     }
     let mime = match path.extension()?.to_str()?.to_ascii_lowercase().as_str() {

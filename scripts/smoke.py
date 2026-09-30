@@ -1,7 +1,7 @@
 """Exercise the actual Linux WebView through tauri-driver, using stdlib only.
 
 Prerequisites: cargo install tauri-driver --locked; WebKitWebDriver; Xvfb.
-Run: dbus-run-session -- xvfb-run -a python3 scripts/smoke.py
+Run: xvfb-run -a dbus-run-session -- python3 scripts/smoke.py
 """
 
 import base64
@@ -48,7 +48,7 @@ with tempfile.TemporaryDirectory(prefix="markdown-viewer-smoke-") as temporary:
     fixture = Path(temporary) / "lectura con ñ.MD"
     fixture.write_text("# Otro documento\n\n- [x] Solo lectura\n\n<script>window.injected = true</script>\n\n<img src='x' onerror='window.injected = true'>", encoding="utf-8")
     log = (ARTIFACTS / "webdriver.log").open("w")
-    driver = subprocess.Popen(["tauri-driver", "--port", "4844", "--native-port", "4845"], stdout=log, stderr=log)
+    driver = subprocess.Popen([os.environ.get("TAURI_DRIVER_BINARY", "tauri-driver"), "--port", "4844", "--native-port", "4845"], stdout=log, stderr=log)
     session = None
     try:
         def driver_ready():

@@ -37,6 +37,15 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm run build -- --bundles ${{ runner.os == 'Linux' && 'deb' || runner.os == 'Windows' && 'nsis' || 'dmg' }}
+      - name: Test Linux WebView and measure startup
+        if: runner.os == 'Linux'
+        env:
+          WEBKIT_DISABLE_DMABUF_RENDERER: '1'
+        run: |
+          sudo apt-get install -y webkit2gtk-driver xvfb
+          cargo install tauri-driver --locked
+          xvfb-run -a dbus-run-session -- python3 scripts/smoke.py
+          xvfb-run -a dbus-run-session -- npm run benchmark -- examples/bienvenido.md 5 > artifacts/benchmark.txt
       - uses: actions/upload-artifact@v4
         with:
           name: markdown-viewer-${{ runner.os }}
@@ -45,3 +54,8 @@ jobs:
             src-tauri/target/release/bundle/nsis/*.exe
             src-tauri/target/release/bundle/dmg/*.dmg
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Linux'
+        with:
+          name: linux-validation
+          path: artifacts/
