@@ -38,6 +38,10 @@
         "role": "Viewer"
       }
     ],
-    "macOS": { "minimumSystemVersion": "10.15" }
+    "macOS": { "minimumSystemVersion": "10.15" },
+    "linux": {
+      "deb": { "desktopTemplate": "../assets/markdown-viewer.desktop" },
+      "rpm": { "desktopTemplate": "../assets/markdown-viewer.desktop" }
+    }
   }
 }
