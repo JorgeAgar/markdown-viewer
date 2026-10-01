@@ -87,6 +87,26 @@ with tempfile.TemporaryDirectory(prefix="markdown-viewer-smoke-") as temporary:
                 return images.length === arguments[0] && images.every(image => image.complete && image.naturalWidth > 0);
             """, [count])
 
+        def wait_for_diagrams(count):
+            try:
+                wait_for(lambda: rendered_diagrams(count), timeout=30)
+            except AssertionError:
+                diagnostics = execute("""
+                    return {
+                        userAgent: navigator.userAgent,
+                        location: location.href,
+                        images: [...document.querySelectorAll('.mermaid-diagram img')].map(image => ({
+                            complete: image.complete, width: image.naturalWidth
+                        })),
+                        errors: [...document.querySelectorAll('.mermaid-error')].map(node => node.textContent),
+                        frames: document.querySelectorAll('.mermaid-frame').length,
+                        events: window.mermaidDiagnostics || []
+                    };
+                """)
+                (ARTIFACTS / 'mermaid-diagnostics.json').write_text(json.dumps(diagnostics, indent=2), encoding='utf-8')
+                print('Mermaid diagnostics:', json.dumps(diagnostics), flush=True)
+                raise
+
         wait_for(lambda: execute("return document.querySelector('#document').dataset.readyMs"))
         assert execute("return !performance.getEntriesByType('resource').some(entry => entry.name.includes('/vendor/'))")
         assert execute("return document.querySelector('#document h1').textContent") == "Leer, y ya."
@@ -133,8 +153,24 @@ with tempfile.TemporaryDirectory(prefix="markdown-viewer-smoke-") as temporary:
         """)
         print("PASS: OS opener refuses local file URLs")
 
+        execute("""
+            window.mermaidDiagnostics = [];
+            const originalError = console.error.bind(console);
+            console.error = (...args) => {
+                window.mermaidDiagnostics.push(args.map(value => value?.stack || String(value)).join(' '));
+                originalError(...args);
+            };
+            document.addEventListener('securitypolicyviolation', event => {
+                window.mermaidDiagnostics.push(`CSP ${event.effectiveDirective}: ${event.blockedURI}`);
+            });
+            window.addEventListener('message', event => {
+                if (event.data?.type?.startsWith('mermaid-')) {
+                    window.mermaidDiagnostics.push(JSON.stringify({type: event.data.type, id: event.data.id, error: event.data.error}));
+                }
+            });
+        """)
         open_path(ROOT / "examples/diagramas.md")
-        wait_for(lambda: rendered_diagrams(3), timeout=30)
+        wait_for_diagrams(3)
         assert execute("return document.querySelectorAll('#document pre[hidden] > code.language-mermaid').length") == 3
         assert execute("return document.querySelector('.mermaid-workspace') === null")
         assert execute("return document.querySelector('.mermaid-frame').getAttribute('sandbox') === 'allow-scripts'")
@@ -166,7 +202,7 @@ with tempfile.TemporaryDirectory(prefix="markdown-viewer-smoke-") as temporary:
             '```mermaid\nflowchart LR\nA --> B\n```\n\n'
             '```js\nconst ordinaryCode = true;\n```', encoding="utf-8")
         open_path(mermaid_fixture)
-        wait_for(lambda: rendered_diagrams(2), timeout=30)
+        wait_for_diagrams(2)
         assert execute("return document.querySelectorAll('#document .mermaid-error').length") == 2
         assert execute("return document.querySelectorAll('#document pre:not([hidden]) > code.language-mermaid').length") == 2
         assert execute("return document.querySelector('#document pre:last-child').textContent.includes('ordinaryCode')")
@@ -195,7 +231,7 @@ with tempfile.TemporaryDirectory(prefix="markdown-viewer-smoke-") as temporary:
         for name, count in [("arquitectura.md", 3), ("interfaz.md", 2), ("coordinacion-rust.md", 2),
                             ("procesamiento-documento.md", 3), ("mermaid.md", 1)]:
             open_path(ROOT / "docs" / name)
-            wait_for(lambda: rendered_diagrams(count), timeout=30)
+            wait_for_diagrams(count)
             assert execute("return document.querySelector('#document .mermaid-error') === null")
         print("PASS: all diagrams in the architecture documentation render")
 
