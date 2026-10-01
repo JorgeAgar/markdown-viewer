@@ -4,7 +4,9 @@
   "version": "0.1.0",
   "identifier": "com.jorgeagar.markdownviewer",
   "build": {
-    "frontendDist": "../src"
+    "beforeDevCommand": "npm run build:frontend",
+    "beforeBuildCommand": "npm run build:frontend",
+    "frontendDist": "../dist"
   },
   "app": {
     "withGlobalTauri": true,
@@ -20,7 +22,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https:; connect-src ipc: http://ipc.localhost; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https:; connect-src ipc: http://ipc.localhost; object-src 'none'; frame-src 'self'; base-uri 'none'; form-action 'none'"
     }
   },
   "bundle": {

@@ -2,7 +2,7 @@
 
 Markdown Viewer abre un archivo Markdown y lo muestra en una ventana de solo lectura. El objetivo es que puedas empezar a leer con poca espera, sin abrir un editor.
 
-Este documento describe el prototipo actual. Los diagramas usan Mermaid. GitHub puede mostrarlos como diagramas; por ahora, nuestra app los muestra como bloques de código. Cada diagrama tiene una explicación que permite entenderlo también sin renderizarlo.
+Este documento describe el prototipo actual. Los diagramas usan Mermaid y se muestran tanto en GitHub como en nuestra app. Cada diagrama tiene una explicación que permite entenderlo también sin renderizarlo.
 
 Para profundizar en cada pieza, continúa con [La interfaz](interfaz.md), [La coordinación en Rust](coordinacion-rust.md) y [El procesamiento del documento](procesamiento-documento.md).
 
@@ -29,6 +29,7 @@ La interfaz pide abrir un archivo. Rust lo lee y devuelve HTML listo para mostra
 | Pieza | Qué hace | Dónde está |
 | --- | --- | --- |
 | Interfaz | Muestra el documento, los botones y los errores. | [`src/index.html`](../src/index.html), [`src/app.js`](../src/app.js) y [`src/style.css`](../src/style.css) |
+| Renderizado de diagramas | Convierte bloques Mermaid en imágenes SVG después de mostrar el texto. | [`src/mermaid.js`](../src/mermaid.js) |
 | Coordinación en Rust | Recibe las peticiones, abre el selector nativo y gestiona aperturas del sistema. | [`src-tauri/src/main.rs`](../src-tauri/src/main.rs) |
 | Procesamiento del documento | Valida el archivo, convierte Markdown a HTML y limpia el resultado. | [`src-tauri/src/document.rs`](../src-tauri/src/document.rs) |
 | Configuración de Tauri | Define la ventana, las reglas de contenido y los paquetes de instalación. | [`src-tauri/tauri.conf.json`](../src-tauri/tauri.conf.json) |
@@ -86,7 +87,7 @@ Durante ese procesamiento, Rust resuelve las imágenes Markdown locales y las in
 
 `ammonia` elimina elementos y atributos peligrosos, como scripts y manejadores de eventos. El visor muestra el HTML permitido con nuestro CSS, que sigue el tema claro u oscuro del sistema.
 
-Los bloques de código se muestran con letra monoespaciada. Actualmente no hay resaltado de sintaxis, renderizado de Mermaid ni fórmulas matemáticas. Tampoco hemos verificado el visor contra toda la suite de CommonMark.
+Los bloques de código se muestran con letra monoespaciada. Los que tienen el lenguaje `mermaid` se convierten después en imágenes SVG mediante una biblioteca local. Actualmente no hay resaltado de sintaxis ni fórmulas matemáticas. Tampoco hemos verificado el visor contra toda la suite de CommonMark.
 
 ## 4. Cómo llega un archivo desde el sistema operativo
 
@@ -113,13 +114,13 @@ El contenido del archivo pasa por estas reglas antes de mostrarse:
 | Enlaces externos | Rust solo permite abrir `http`, `https` y `mailto` con la aplicación del sistema. |
 | Enlaces a otros archivos locales | Todavía no se abren. |
 
-La política de contenido de Tauri, llamada CSP, limita qué puede cargar o ejecutar el WebView. Los scripts y estilos deben venir de la app; el documento no puede añadir scripts propios, marcos ni formularios funcionales.
+La política de contenido de Tauri, llamada CSP, limita qué puede cargar o ejecutar el WebView. Los scripts y estilos deben venir de la app; el documento no puede añadir scripts propios ni formularios funcionales. El renderizador Mermaid calcula los diagramas en un iframe local con sandbox y devuelve imágenes SVG a la interfaz.
 
 Las imágenes relativas escritas como HTML crudo no siguen el tratamiento de las imágenes Markdown y se eliminan sus rutas relativas durante la limpieza.
 
 ## 6. Qué decisiones ayudan a abrir rápido
 
-La interfaz usa archivos estáticos sin frameworks ni dependencias de ejecución en JavaScript. Rust convierte el documento dentro de la app y Tauri utiliza el WebView del sistema.
+La interfaz usa archivos estáticos sin frameworks. Rust convierte el documento dentro de la app y Tauri utiliza el WebView del sistema. Mermaid se carga bajo demanda después de mostrar el texto; los documentos sin diagramas no lo cargan.
 
 El texto no espera a que se descarguen imágenes remotas. Las imágenes usan carga diferida con `loading="lazy"`. Las imágenes locales sí se leen durante la conversión, por lo que un documento con muchas imágenes puede tardar más.
 
@@ -129,11 +130,12 @@ Para comparar resultados entre Windows, Linux y macOS hay que medir en equipos r
 
 ## 7. Dónde añadir futuras funciones de visualización
 
+Mermaid ya está integrado. [Su documentación](mermaid.md) describe cómo se empaqueta, cuándo se carga y cómo se mantiene separado del HTML del documento.
+
 Estas ampliaciones todavía no están implementadas:
 
 | Función | Cómo encajaría |
 | --- | --- |
-| Mermaid | Detectar sus bloques de código y cargar una biblioteca local para convertirlos en diagramas. |
 | Fórmulas | Reconocer la sintaxis matemática y añadir un renderizador de fórmulas. |
 | Resaltado de código | Detectar el lenguaje de los bloques y aplicar el resaltado. |
 

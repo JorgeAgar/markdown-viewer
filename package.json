@@ -5,14 +5,17 @@
   "description": "Un visor de Markdown mínimo para Windows, Linux y macOS.",
   "type": "module",
   "scripts": {
+    "build:frontend": "node scripts/build-frontend.mjs",
     "dev": "tauri dev",
     "build": "tauri build",
     "build:binary": "tauri build --no-bundle",
     "test": "cargo test --manifest-path src-tauri/Cargo.toml",
-    "check": "node --check src/app.js && cargo fmt --manifest-path src-tauri/Cargo.toml -- --check && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
+    "check": "node --check src/app.js && node --check src/mermaid.js && node --check src/mermaid-frame.js && node --check scripts/build-frontend.mjs && cargo fmt --manifest-path src-tauri/Cargo.toml -- --check && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
     "benchmark": "node scripts/benchmark.mjs"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "2.12.1"
+    "@tauri-apps/cli": "2.12.1",
+    "esbuild": "0.28.2",
+    "mermaid": "11.17.2"
   }
 }

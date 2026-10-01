@@ -2,7 +2,7 @@
 
 Esta pieza conecta la interfaz con el sistema operativo y con el procesador de documentos. Recibe peticiones para abrir archivos, usa el selector nativo y entrega los resultados a JavaScript.
 
-Es la segunda pieza de [la arquitectura](arquitectura.md) y está en [`src-tauri/src/main.rs`](../src-tauri/src/main.rs). Los diagramas describen el prototipo actual y usan Mermaid. GitHub los renderiza; nuestro visor todavía los muestra como código.
+Es la segunda pieza de [la arquitectura](arquitectura.md) y está en [`src-tauri/src/main.rs`](../src-tauri/src/main.rs). Los diagramas describen el prototipo actual y usan Mermaid, que se renderiza en GitHub y en el visor.
 
 ## 1. Qué coordina
 
@@ -26,7 +26,7 @@ Los plugins aportan integración con el escritorio. `dialog` abre el selector de
 
 Al entrar en `main`, Rust guarda el momento de inicio y busca una ruta entre los argumentos del proceso. Después configura los plugins, registra el estado compartido y publica los comandos que JavaScript puede llamar.
 
-La configuración en [`tauri.conf.json`](../src-tauri/tauri.conf.json) define la ventana `main` y señala `src/` como carpeta de la interfaz. `withGlobalTauri` habilita las funciones que JavaScript usa desde `window.__TAURI__`.
+La configuración en [`tauri.conf.json`](../src-tauri/tauri.conf.json) define la ventana `main` y señala `dist/` como carpeta de la interfaz. Antes de desarrollar o compilar, Tauri ejecuta `npm run build:frontend` para generar esa carpeta a partir de `src/` e incluir los módulos locales de Mermaid. `withGlobalTauri` habilita las funciones que JavaScript usa desde `window.__TAURI__`.
 
 El estado `Viewer` tiene estos datos:
 
@@ -110,6 +110,8 @@ Una segunda apertura sin archivo solo enfoca la ventana. Al cerrarla termina la 
 `open_link` interpreta la dirección y comprueba su esquema. Solo permite `http`, `https` y `mailto` antes de delegar en `opener`. Esa comprobación en Rust se mantiene aunque la interfaz también filtre los enlaces.
 
 Los comandos propios se registran en `invoke_handler`. El [archivo de capacidades](../src-tauri/capabilities/main.json) permite escuchar y dejar de escuchar eventos en la ventana principal. La lectura de documentos y la apertura de enlaces se implementan mediante nuestros comandos; cada uno debe aplicar sus propias validaciones.
+
+Cargo declara la feature `custom-protocol` para que la CLI active el modo de producción de Tauri al compilar. El build utiliza los recursos empaquetados y la CSP configurada. Mermaid usa un iframe local con sandbox para su cálculo; ese renderer no recibe operaciones de archivo desde la interfaz.
 
 `content_painted` calcula los milisegundos desde `started`. La primera llamada con un documento marca `measured`. Si está definida `MD_VIEWER_BENCHMARK`, escribe el tiempo en el registro; si está definida `MD_VIEWER_BENCHMARK_EXIT`, cierra la app después de esa medición. Esos comportamientos permiten automatizar el benchmark.
 

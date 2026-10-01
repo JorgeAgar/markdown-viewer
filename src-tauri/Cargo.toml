@@ -6,6 +6,9 @@ authors = ["Jorge Andrés Reyes Serrano"]
 edition = "2021"
 rust-version = "1.98"
 
+[features]
+custom-protocol = ["tauri/custom-protocol"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

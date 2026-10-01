@@ -2,7 +2,7 @@
 
 La interfaz es la parte que ves al abrir Markdown Viewer. Muestra el documento y convierte acciones como pulsar un botón o arrastrar un archivo en peticiones a Rust.
 
-Este documento profundiza en la primera pieza de [la arquitectura](arquitectura.md). Describe el prototipo actual. Los diagramas usan Mermaid; GitHub los renderiza, pero el visor todavía los muestra como código.
+Este documento profundiza en la primera pieza de [la arquitectura](arquitectura.md). Describe el prototipo actual. Los diagramas usan Mermaid y se renderizan en GitHub y en el visor.
 
 ## 1. Los archivos que forman la interfaz
 
@@ -24,6 +24,8 @@ HTML define los elementos, CSS decide cómo se ven y JavaScript actualiza su con
 | [`src/index.html`](../src/index.html) | Barra superior, botones, zona de lectura, pantalla vacía, mensaje de error y aviso para arrastrar archivos. |
 | [`src/style.css`](../src/style.css) | Estilo del documento, temas claro y oscuro y ajustes para ventanas estrechas. |
 | [`src/app.js`](../src/app.js) | Apertura de documentos, eventos, navegación y preparación del HTML. |
+| [`src/mermaid.js`](../src/mermaid.js) | Renderizado bajo demanda de diagramas, temas y avisos por bloque. |
+| [`src/mermaid-frame.js`](../src/mermaid-frame.js) | Ejecuta Mermaid en un iframe con sandbox y devuelve el SVG por mensajes. |
 
 ## 2. Qué aparece en la ventana
 
@@ -112,10 +114,14 @@ Después de insertar el documento, JavaScript espera dos llamadas a `requestAnim
 
 El tiempo devuelto se guarda en `data-ready-ms` del artículo. Es un dato de medición, sin una etiqueta visible para quien lee. No confirma que todas las imágenes hayan cargado ni mide el pintado físico de la pantalla.
 
+Después de ese aviso, `renderMermaid` busca bloques `pre > code.language-mermaid`. Si hay alguno, importa el módulo local de diagramas y le pasa una comprobación que indica si el documento sigue siendo el actual. Los diagramas reemplazan visualmente sus bloques por imágenes SVG; el código original queda oculto para permitir reconstruirlos si cambia el tema del sistema.
+
+`diagramRequest` distingue también entre generaciones del renderizado del mismo documento. Al abrir otro archivo o cambiar el tema, una generación anterior pierde permiso para modificar la vista. Los lotes se ejecutan en serie porque Mermaid comparte su configuración. Consulta [Renderizado de Mermaid](mermaid.md) para conocer el recorrido completo y el comportamiento si un bloque falla.
+
 ## 8. Dónde cambiar o comprobar esta pieza
 
 Para modificar la distribución o la tipografía, empieza por HTML y CSS. Para añadir una interacción o preparar un nuevo elemento del documento, revisa `app.js`. Una nueva operación sobre archivos debe pasar por la [coordinación en Rust](coordinacion-rust.md).
 
 [`scripts/smoke.py`](../scripts/smoke.py) comprueba la interfaz real en Linux, incluidas aperturas, errores, imágenes y selector nativo. Consulta [Validación](../README.md#validación) para ejecutarlo.
 
-Mermaid, las fórmulas y el resaltado de código aún no están implementados. Su incorporación requeriría revisar el procesamiento, la preparación del HTML y la política de contenido de Tauri.
+Las fórmulas y el resaltado de código aún no están implementados. Su incorporación requeriría revisar el procesamiento, la preparación del HTML y la política de contenido de Tauri.

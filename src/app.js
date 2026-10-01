@@ -11,6 +11,37 @@ const openButton = document.querySelector('#open');
 const emptyButton = document.querySelector('#empty-open');
 let requestId = 0;
 let choosing = false;
+let mermaidModule;
+let diagramRequest = 0;
+const colorScheme = window.matchMedia('(prefers-color-scheme: dark)');
+
+async function renderMermaid(id) {
+  if (!article.querySelector('pre > code.language-mermaid')) return;
+  const generation = ++diagramRequest;
+  const isCurrent = () => id === requestId && generation === diagramRequest;
+  try {
+    // The coordinator and its isolated renderer are bundled locally, on demand.
+    mermaidModule ??= import('./vendor/mermaid.js').catch((error) => {
+      mermaidModule = undefined;
+      throw error;
+    });
+    const renderer = await mermaidModule;
+    if (isCurrent()) await renderer.renderDiagrams(article, isCurrent, colorScheme.matches);
+  } catch (message) {
+    if (!isCurrent()) return;
+    console.error('Mermaid:', message);
+    article.querySelectorAll('pre > code.language-mermaid').forEach((code) => {
+      const block = code.parentElement;
+      if (block.previousElementSibling?.classList.contains('mermaid-error')) return;
+      const notice = document.createElement('p');
+      notice.className = 'mermaid-error';
+      notice.textContent = 'No se pudo cargar Mermaid. Se muestra el código.';
+      block.before(notice);
+    });
+  }
+}
+
+colorScheme.addEventListener('change', () => { void renderMermaid(requestId); });
 
 if (/Mac/.test(navigator.platform)) document.querySelector('#modifier').textContent = '⌘';
 
@@ -73,6 +104,7 @@ async function openDocument(operation) {
       } catch (message) {
         console.error(message);
       }
+      if (id === requestId) void renderMermaid(id);
     }));
   } catch (message) {
     if (id !== requestId) return;

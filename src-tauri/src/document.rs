@@ -117,6 +117,7 @@ pub fn render(markdown: &str, directory: &Path) -> String {
         .add_tag_attributes("th", &["align"])
         .add_tag_attributes("td", &["align"])
         .add_generic_attributes(&["id"])
+        .add_allowed_classes("code", &["language-mermaid"])
         .url_schemes(["https", "http", "mailto", "data"].into_iter().collect())
         .url_relative(ammonia::UrlRelative::Custom(Box::new(relative_url)))
         .clean(&output)
@@ -173,6 +174,18 @@ mod tests {
         let html = render("[arriba](#hola) [archivo](./otro.md)", Path::new("/"));
         assert!(html.contains("href=\"#hola\""));
         assert!(!html.contains("href=\"./otro.md\""));
+    }
+
+    #[test]
+    fn preserves_mermaid_marker_and_escapes_diagram_source() {
+        let html = render(
+            "```mermaid\nflowchart LR\nA[\"<script>alert(1)</script>\"] --> B\n```\n\n```js\nalert(1)\n```",
+            Path::new("/"),
+        );
+        assert!(html.contains("<code class=\"language-mermaid\">"));
+        assert!(html.contains("&lt;script&gt;"));
+        assert!(!html.contains("<script>"));
+        assert!(!html.contains("language-js"));
     }
 
     #[test]

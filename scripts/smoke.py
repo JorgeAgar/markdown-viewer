@@ -74,7 +74,21 @@ with tempfile.TemporaryDirectory(prefix="markdown-viewer-smoke-") as temporary:
             image = call("GET", f"/session/{session}/screenshot")
             (ARTIFACTS / name).write_bytes(base64.b64decode(image))
 
+        def open_path(path):
+            execute_async("""
+                const done = arguments[arguments.length - 1];
+                openDocument(() => window.__TAURI__.core.invoke('open_document', {path: arguments[0]}))
+                    .then(() => done(true), error => done(String(error)));
+            """, [str(path)])
+
+        def rendered_diagrams(count):
+            return execute("""
+                const images = [...document.querySelectorAll('#document .mermaid-diagram img')];
+                return images.length === arguments[0] && images.every(image => image.complete && image.naturalWidth > 0);
+            """, [count])
+
         wait_for(lambda: execute("return document.querySelector('#document').dataset.readyMs"))
+        assert execute("return !performance.getEntriesByType('resource').some(entry => entry.name.includes('/vendor/'))")
         assert execute("return document.querySelector('#document h1').textContent") == "Leer, y ya."
         assert execute("return document.querySelectorAll('#document table tbody tr').length") == 3
         assert execute("return document.querySelector('#document a[href=\"#leer-y-ya\"]') !== null")
@@ -118,6 +132,72 @@ with tempfile.TemporaryDirectory(prefix="markdown-viewer-smoke-") as temporary:
             window.__TAURI__.core.invoke('open_link', {href: 'file:///etc/passwd'}).then(() => done(false), () => done(true));
         """)
         print("PASS: OS opener refuses local file URLs")
+
+        open_path(ROOT / "examples/diagramas.md")
+        wait_for(lambda: rendered_diagrams(3), timeout=30)
+        assert execute("return document.querySelectorAll('#document pre[hidden] > code.language-mermaid').length") == 3
+        assert execute("return document.querySelector('.mermaid-workspace') === null")
+        assert execute("return document.querySelector('.mermaid-frame').getAttribute('sandbox') === 'allow-scripts'")
+        assert execute("return document.querySelector('.mermaid-frame').contentDocument === null")
+        execute("document.querySelector('#reader').scrollTop = 0")
+        screenshot("mermaid.png")
+        print("PASS: local Mermaid renderer draws flowchart, sequence and state as SVG images")
+
+        light_images = execute("return [...document.querySelectorAll('.mermaid-diagram img')].map(image => image.src)")
+        execute_async("""
+            const done = arguments[arguments.length - 1];
+            mermaidModule.then(module => module.renderDiagrams(
+                document.querySelector('#document'), () => true, true
+            )).then(() => done(true), error => done(String(error)));
+        """)
+        assert rendered_diagrams(3)
+        dark_images = execute("return [...document.querySelectorAll('.mermaid-diagram img')].map(image => image.src)")
+        assert dark_images != light_images
+        print("PASS: diagrams can render again with the dark theme without duplicates")
+
+        mermaid_fixture = Path(temporary) / "mermaid-errors.md"
+        mermaid_fixture.write_text(
+            '# Diagramas con errores\n\n'
+            '```mermaid\nthis is not a diagram\n```\n\n'
+            '```mermaid\n' + ('x' * 50_001) + '\n```\n\n'
+            '```mermaid\n%%{init: {"securityLevel": "loose", "htmlLabels": true, "flowchart": {"htmlLabels": true}}}%%\n'
+            'flowchart LR\nA["<img src=x onerror=window.injected=true>"] --> B["Seguro"]\n'
+            'click A "javascript:window.injected=true"\n```\n\n'
+            '```mermaid\nflowchart LR\nA --> B\n```\n\n'
+            '```js\nconst ordinaryCode = true;\n```', encoding="utf-8")
+        open_path(mermaid_fixture)
+        wait_for(lambda: rendered_diagrams(2), timeout=30)
+        assert execute("return document.querySelectorAll('#document .mermaid-error').length") == 2
+        assert execute("return document.querySelectorAll('#document pre:not([hidden]) > code.language-mermaid').length") == 2
+        assert execute("return document.querySelector('#document pre:last-child').textContent.includes('ordinaryCode')")
+        assert execute("return window.injected === undefined")
+        assert execute("return document.querySelector('#document svg, #document iframe, #document script') === null")
+        assert execute("return document.querySelector('.mermaid-workspace') === null")
+        print("PASS: bad and oversized diagrams keep source; later diagrams and ordinary code survive; unsafe directives cannot execute")
+
+        execute("const probe = document.createElement('script'); probe.textContent = 'window.cspInjected = true'; document.body.append(probe); probe.remove()")
+        assert execute("return window.cspInjected === undefined")
+        print("PASS: production CSP blocks inline scripts; renderer has an opaque sandbox origin")
+
+        # Start rendering and immediately replace the document. Await both jobs so
+        # a late diagram would be observable rather than hidden by an early check.
+        execute_async("""
+            const done = arguments[arguments.length - 1];
+            const path = arguments[0];
+            const rendering = renderMermaid(requestId);
+            openDocument(() => window.__TAURI__.core.invoke('open_document', {path}))
+                .then(() => rendering).then(() => done(true), error => done(String(error)));
+        """, [str(fixture)])
+        assert execute("return document.querySelector('#document h1').textContent") == "Otro documento"
+        assert execute("return document.querySelector('#document .mermaid-diagram') === null")
+        print("PASS: late diagram results cannot alter a newer document")
+
+        for name, count in [("arquitectura.md", 3), ("interfaz.md", 2), ("coordinacion-rust.md", 2),
+                            ("procesamiento-documento.md", 3), ("mermaid.md", 1)]:
+            open_path(ROOT / "docs" / name)
+            wait_for(lambda: rendered_diagrams(count), timeout=30)
+            assert execute("return document.querySelector('#document .mermaid-error') === null")
+        print("PASS: all diagrams in the architecture documentation render")
 
         call("DELETE", f"/session/{session}")
         session = None

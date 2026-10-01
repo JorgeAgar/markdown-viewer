@@ -63,6 +63,13 @@ footer { height: 34px; flex-shrink: 0; display: flex; align-items: center; justi
 .markdown img { max-width: 100%; height: auto; border-radius: 5px; }
 .markdown hr { border: 0; border-top: 1px solid var(--line); margin: 2em 0; }
 .markdown input[type="checkbox"] { accent-color: var(--accent); margin-right: 7px; }
+.mermaid-diagram { margin: 1.4em 0; padding: 16px; border: 1px solid var(--line); border-radius: 7px; overflow: auto; background: var(--paper); }
+.mermaid-diagram img { display: block; margin: 0 auto; border-radius: 0; }
+.mermaid-error { color: var(--muted); font-size: .85em; margin-bottom: .4em; }
+/* The temporary layout must have measurable dimensions without being visible. */
+.mermaid-workspace { position: fixed; top: 0; left: 0; width: 800px; visibility: hidden; pointer-events: none; font: 16px Arial, sans-serif; }
+.mermaid-workspace text, .mermaid-workspace tspan { font-family: Arial, sans-serif; font-size: 16px; }
+.mermaid-frame { position: fixed; top: 0; left: 0; width: 800px; height: 600px; border: 0; visibility: hidden; pointer-events: none; }
 @media (prefers-color-scheme: dark) {
   :root { --paper: #1d201e; --ink: #e0e4de; --muted: #939e92; --line: #343c35; --accent: #90b59a; --soft: #282e29; --code: #272d28; }
   .primary-button { color: #1d201e; }

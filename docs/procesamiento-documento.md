@@ -2,7 +2,7 @@
 
 Esta pieza recibe la ruta de un Markdown y devuelve su contenido como HTML, junto con el nombre, la ruta y el tamaño del archivo. También valida lo que lee y limpia el HTML antes de que llegue a la interfaz.
 
-Es la tercera pieza de [la arquitectura](arquitectura.md) y está en [`src-tauri/src/document.rs`](../src-tauri/src/document.rs). Los diagramas usan Mermaid. GitHub los renderiza; el visor todavía los muestra como bloques de código.
+Es la tercera pieza de [la arquitectura](arquitectura.md) y está en [`src-tauri/src/document.rs`](../src-tauri/src/document.rs). Los diagramas usan Mermaid y se renderizan en GitHub y en el visor.
 
 ## 1. Qué recibe y qué devuelve
 
@@ -63,7 +63,7 @@ flowchart LR
 
 Activamos explícitamente tablas, texto tachado, listas de tareas y notas al pie. La base del parser es CommonMark, pero no hemos pasado toda su suite de conformidad contra el visor. La limpieza y las restricciones de recursos también pueden cambiar el resultado visible.
 
-Mermaid sigue siendo un bloque de código. Las fórmulas no tienen un renderizador y los lenguajes de los bloques no reciben colores de sintaxis.
+Rust conserva la clase `language-mermaid` en los bloques de ese lenguaje. El contenido sigue siendo texto escapado dentro de `pre` y `code`; la interfaz lo convierte después en un diagrama. La clase no concede permiso para ejecutar el texto como JavaScript. Las fórmulas no tienen un renderizador y los demás lenguajes de los bloques no reciben colores de sintaxis.
 
 ## 4. Cómo encuentra las imágenes
 
@@ -112,7 +112,7 @@ Si una imagen no existe o no cumple las reglas, `image_source` devuelve ningún 
 
 ## 6. Qué elimina la limpieza de HTML
 
-`ammonia` usa su lista de etiquetas y atributos permitidos como base. Nuestra configuración añade los atributos de las casillas de tareas, la alineación de celdas y los identificadores `id`.
+`ammonia` usa su lista de etiquetas y atributos permitidos como base. Nuestra configuración añade los atributos de las casillas de tareas, la alineación de celdas, los identificadores `id` y la clase `language-mermaid` únicamente en etiquetas `code`. No se permite cualquier clase del documento.
 
 Los scripts y atributos activos como `onerror` se eliminan. Los esquemas de URL admitidos por la limpieza son `http`, `https`, `mailto` y `data`. Para direcciones relativas, `relative_url` conserva únicamente las que empiezan por `#`.
 
@@ -140,4 +140,4 @@ Las pruebas al final de `document.rs` cubren conversión, limpieza de HTML activ
 
 Para cambiar formatos o límites, empieza por las constantes, `is_markdown` e `image_source`. Para activar otra extensión del parser, revisa las opciones de `render` y comprueba también si la limpieza conserva su HTML.
 
-Una nueva función de visualización puede necesitar cambios en la interfaz. Reconocer una fórmula o un bloque Mermaid no basta para dibujarlo. Consulta [La interfaz](interfaz.md) para seguir el recorrido después de la conversión y el [README](../README.md#validación) para ejecutar las comprobaciones.
+Una nueva función de visualización puede necesitar cambios en la interfaz. Mermaid es un ejemplo: Rust conserva su marca y JavaScript dibuja el diagrama. Consulta [Renderizado de Mermaid](mermaid.md) para seguir ese recorrido y el [README](../README.md#validación) para ejecutar las comprobaciones.
