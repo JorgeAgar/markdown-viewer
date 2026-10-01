@@ -70,7 +70,13 @@ pnpm check
 
 `pnpm check` prepara el frontend con comprobación de tipos y comprueba el formato y los avisos de Rust. `pnpm test` también prepara el frontend antes de las pruebas Rust, porque Tauri necesita los archivos para compilar. Para comprobar solo TypeScript, usa `pnpm check:frontend`.
 
-Los contratos de comandos y eventos están en `src/tauri.d.ts`. Se mantienen junto a sus implementaciones Rust; estas declaraciones no validan los datos en ejecución. La interfaz comprueba que los elementos esperados existen y tienen el tipo adecuado antes de usarlos.
+`src/tauri.d.ts` se genera a partir de los comandos registrados en `src-tauri/src/main.rs`, sus argumentos y resultados, los campos de `Document` con `Serialize` y las emisiones de eventos propios. `pnpm check:ipc` compara la declaración guardada con Rust y ejecuta pruebas que introducen cambios incompatibles. También forma parte de `pnpm check` y `pnpm test`. Esta herramienta compila un crate pequeño con `syn`; no compila Tauri ni necesita GTK o WebKit.
+
+Al cambiar el contrato, ejecuta `pnpm generate:ipc` y añade la declaración generada a la misma PR. Los argumentos inyectados por Tauri, como `AppHandle` y `State`, no aparecen en JavaScript. Los nombres de los argumentos siguen el `camelCase` predeterminado de Tauri. `Result<T, String>` produce una promesa de `T`; el error rechaza la promesa.
+
+El generador analiza la sintaxis Rust de los dos archivos actuales. Admite los tipos usados por el proyecto y eventos emitidos con un nombre literal y payload `()`, que se serializa como `null`. Falla ante tipos desconocidos, atributos de serialización o condicionales sobre `Document`, sus campos o los comandos, y opciones de `tauri::command`. También rechaza las otras variantes directas de `Emitter` y las llamadas asociadas a esos métodos. Antes de introducirlos hay que ampliar el generador y sus pruebas. No expande macros ni resuelve tipos como el compilador, y no comprueba datos en ejecución.
+
+Los eventos `tauri://drag-*` proceden de Tauri 2. Sus declaraciones y la API global están en `scripts/ipc-contract/tauri-globals.d.ts`; el generador las conserva, pero no las deriva de Rust del proyecto. Al actualizar Tauri se deben contrastar con su [API de arrastre](https://docs.rs/tauri/latest/tauri/webview/enum.DragDropEvent.html). La interfaz comprueba que los elementos esperados existen y tienen el tipo adecuado antes de usarlos.
 
 Las pruebas cubren el renderizado, la limpieza de HTML activo, rutas con espacios y Unicode, archivos inválidos, límites de tamaño e imágenes locales fuera de la carpeta del documento.
 

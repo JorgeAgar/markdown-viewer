@@ -1,0 +1,9 @@
+[package]
+name = "viewer-ipc-contract"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+heck = "0.5"
+syn = { version = "2", features = ["full", "visit"] }
