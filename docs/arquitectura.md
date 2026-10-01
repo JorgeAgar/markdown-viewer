@@ -4,6 +4,8 @@ Markdown Viewer abre un archivo Markdown y lo muestra en una ventana de solo lec
 
 Este documento describe el prototipo actual. Los diagramas usan Mermaid. GitHub puede mostrarlos como diagramas; por ahora, nuestra app los muestra como bloques de código. Cada diagrama tiene una explicación que permite entenderlo también sin renderizarlo.
 
+Para profundizar en cada pieza, continúa con [La interfaz](interfaz.md), [La coordinación en Rust](coordinacion-rust.md) y [El procesamiento del documento](procesamiento-documento.md).
+
 ## 1. Las piezas de la app
 
 La app tiene una interfaz hecha con HTML, CSS y JavaScript, y una parte escrita en Rust que lee y procesa archivos. Tauri conecta ambas partes y crea la ventana de escritorio.

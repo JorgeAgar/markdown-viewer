@@ -8,6 +8,8 @@ La interfaz usa HTML, CSS y JavaScript sin frameworks ni dependencias de ejecuci
 
 En [`docs/arquitectura.md`](docs/arquitectura.md) se explica cómo funciona la app, con diagramas de sus componentes y del recorrido de un archivo. La carpeta `docs/` reúne la documentación del proyecto.
 
+Los documentos de [la interfaz](docs/interfaz.md), [la coordinación en Rust](docs/coordinacion-rust.md) y [el procesamiento del documento](docs/procesamiento-documento.md) explican cada pieza con más detalle.
+
 ## Uso
 
 - Abre un archivo con el botón, `Ctrl+O` o `⌘O` en macOS.
