@@ -84,6 +84,8 @@ Los módulos se guardan en `dist/vendor/`. El coordinador `mermaid.js` y el rend
 
 No se usa una CDN ni se necesita un servidor de desarrollo. Tras modificar la interfaz, vuelve a generar los recursos o reinicia `npm run dev`.
 
+`npm run check` y `npm test` también ejecutan el build de la interfaz antes de invocar Cargo, mediante `precheck` y `pretest`. El contexto de Tauri necesita que `frontendDist` exista durante la compilación de Rust. Estos pasos permiten ejecutar las comprobaciones en una copia limpia sin haber abierto o compilado previamente el visor.
+
 ## 7. Cómo se comprueba
 
 La prueba Rust de la marca Mermaid comprueba que la limpieza conserva `language-mermaid`, mantiene escapado el contenido y elimina clases de otros lenguajes.

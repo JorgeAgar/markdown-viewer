@@ -68,6 +68,8 @@ npm test
 npm run check
 ```
 
+Ambos comandos generan primero `dist/` mediante sus pasos `pretest` y `precheck`. Rust necesita esos recursos al compilar el contexto de Tauri, incluso durante las comprobaciones. Así funcionan también en una copia recién descargada del repositorio.
+
 Las pruebas cubren el renderizado, la limpieza de HTML activo, rutas con espacios y Unicode, archivos inválidos, límites de tamaño e imágenes locales fuera de la carpeta del documento.
 
 En Linux, `scripts/smoke.py` prueba la aplicación compilada dentro de su WebView, incluyendo una segunda apertura, imágenes, el selector nativo, manejo de errores y Mermaid. Comprueba diagramas válidos, errores, límites, temas, aperturas simultáneas y los diagramas de la documentación. Requiere `tauri-driver`, `WebKitWebDriver`, Xvfb y xdotool:

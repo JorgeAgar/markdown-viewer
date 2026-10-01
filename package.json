@@ -6,6 +6,8 @@
   "type": "module",
   "scripts": {
     "build:frontend": "node scripts/build-frontend.mjs",
+    "precheck": "npm run build:frontend",
+    "pretest": "npm run build:frontend",
     "dev": "tauri dev",
     "build": "tauri build",
     "build:binary": "tauri build --no-bundle",
