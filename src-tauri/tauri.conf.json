@@ -4,7 +4,9 @@
   "version": "0.1.0",
   "identifier": "com.jorgeagar.markdownviewer",
   "build": {
-    "frontendDist": "../src"
+    "beforeDevCommand": "pnpm watch:frontend",
+    "beforeBuildCommand": "pnpm build:frontend",
+    "frontendDist": "../dist"
   },
   "app": {
     "withGlobalTauri": true,

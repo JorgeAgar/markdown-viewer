@@ -6,13 +6,13 @@ Este documento profundiza en la primera pieza de [la arquitectura](arquitectura.
 
 ## 1. Los archivos que forman la interfaz
 
-La interfaz usa HTML, CSS y JavaScript sin un framework. Tauri carga esos archivos dentro del WebView de la ventana principal.
+La interfaz usa HTML, CSS y TypeScript sin un framework. TypeScript se compila a JavaScript antes de iniciar o empaquetar la app. Tauri carga el JavaScript generado y las copias de HTML y CSS desde `dist/` dentro del WebView de la ventana principal.
 
 ```mermaid
 flowchart TD
     HTML["index.html: estructura de la ventana"] --> Vista["WebView"]
     CSS["style.css: tipografía, colores y distribución"] --> Vista
-    JS["app.js: interacción y actualización del documento"] --> Vista
+    JS["app.ts: interacción y actualización del documento"] --> Vista
     JS -->|"invoke: pide una operación"| Rust["Coordinación en Rust"]
     Rust -->|"Resultado o evento"| JS
 ```
@@ -23,7 +23,9 @@ HTML define los elementos, CSS decide cómo se ven y JavaScript actualiza su con
 | --- | --- |
 | [`src/index.html`](../src/index.html) | Barra superior, botones, zona de lectura, pantalla vacía, mensaje de error y aviso para arrastrar archivos. |
 | [`src/style.css`](../src/style.css) | Estilo del documento, temas claro y oscuro y ajustes para ventanas estrechas. |
-| [`src/app.js`](../src/app.js) | Apertura de documentos, eventos, navegación y preparación del HTML. |
+| [`src/app.ts`](../src/app.ts) | Apertura de documentos, eventos, navegación y preparación del HTML. |
+| [`src/tauri.d.ts`](../src/tauri.d.ts) | Tipos del documento, comandos y eventos que conectan con Rust. |
+| [`scripts/frontend.mjs`](../scripts/frontend.mjs) | Compilación y copia de archivos a `dist/`, con seguimiento de cambios durante el desarrollo. |
 
 ## 2. Qué aparece en la ventana
 
@@ -114,7 +116,7 @@ El tiempo devuelto se guarda en `data-ready-ms` del artículo. Es un dato de med
 
 ## 8. Dónde cambiar o comprobar esta pieza
 
-Para modificar la distribución o la tipografía, empieza por HTML y CSS. Para añadir una interacción o preparar un nuevo elemento del documento, revisa `app.js`. Una nueva operación sobre archivos debe pasar por la [coordinación en Rust](coordinacion-rust.md).
+Para modificar la distribución o la tipografía, empieza por HTML y CSS. Para añadir una interacción o preparar un nuevo elemento del documento, revisa `app.ts`. Una nueva operación sobre archivos debe pasar por la [coordinación en Rust](coordinacion-rust.md).
 
 [`scripts/smoke.py`](../scripts/smoke.py) comprueba la interfaz real en Linux, incluidas aperturas, errores, imágenes y selector nativo. Consulta [Validación](../README.md#validación) para ejecutarlo.
 

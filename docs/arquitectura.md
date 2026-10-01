@@ -8,13 +8,13 @@ Para profundizar en cada pieza, continúa con [La interfaz](interfaz.md), [La co
 
 ## 1. Las piezas de la app
 
-La app tiene una interfaz hecha con HTML, CSS y JavaScript, y una parte escrita en Rust que lee y procesa archivos. Tauri conecta ambas partes y crea la ventana de escritorio.
+La app tiene una interfaz hecha con HTML, CSS y TypeScript, y una parte escrita en Rust que lee y procesa archivos. Tauri conecta ambas partes y crea la ventana de escritorio.
 
 ```mermaid
 flowchart TB
     Usuario["Persona que abre un Markdown"] --> Interfaz
     subgraph App["Markdown Viewer"]
-        Interfaz["Interfaz: HTML, CSS y JavaScript"]
+        Interfaz["Interfaz: HTML, CSS y TypeScript"]
         Puente["Tauri: comandos y eventos"]
         Rust["Rust: lectura y conversión"]
         Interfaz <-->|"Peticiones y resultados"| Puente
@@ -28,7 +28,7 @@ La interfaz pide abrir un archivo. Rust lo lee y devuelve HTML listo para mostra
 
 | Pieza | Qué hace | Dónde está |
 | --- | --- | --- |
-| Interfaz | Muestra el documento, los botones y los errores. | [`src/index.html`](../src/index.html), [`src/app.js`](../src/app.js) y [`src/style.css`](../src/style.css) |
+| Interfaz | Muestra el documento, los botones y los errores. | [`src/index.html`](../src/index.html), [`src/app.ts`](../src/app.ts) y [`src/style.css`](../src/style.css) |
 | Coordinación en Rust | Recibe las peticiones, abre el selector nativo y gestiona aperturas del sistema. | [`src-tauri/src/main.rs`](../src-tauri/src/main.rs) |
 | Procesamiento del documento | Valida el archivo, convierte Markdown a HTML y limpia el resultado. | [`src-tauri/src/document.rs`](../src-tauri/src/document.rs) |
 | Configuración de Tauri | Define la ventana, las reglas de contenido y los paquetes de instalación. | [`src-tauri/tauri.conf.json`](../src-tauri/tauri.conf.json) |

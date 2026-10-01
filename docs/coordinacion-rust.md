@@ -26,7 +26,7 @@ Los plugins aportan integración con el escritorio. `dialog` abre el selector de
 
 Al entrar en `main`, Rust guarda el momento de inicio y busca una ruta entre los argumentos del proceso. Después configura los plugins, registra el estado compartido y publica los comandos que JavaScript puede llamar.
 
-La configuración en [`tauri.conf.json`](../src-tauri/tauri.conf.json) define la ventana `main` y señala `src/` como carpeta de la interfaz. `withGlobalTauri` habilita las funciones que JavaScript usa desde `window.__TAURI__`.
+La configuración en [`tauri.conf.json`](../src-tauri/tauri.conf.json) define la ventana `main` y señala `dist/` como carpeta de la interfaz compilada. Los hooks preparan los archivos generados antes del build y recompilan durante el desarrollo. `withGlobalTauri` habilita las funciones que JavaScript usa desde `window.__TAURI__`.
 
 El estado `Viewer` tiene estos datos:
 

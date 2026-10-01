@@ -1,29 +1,38 @@
 /* All document HTML is parsed and sanitized in Rust before reaching this view. */
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
-const article = document.querySelector('#document');
-const empty = document.querySelector('#empty');
-const error = document.querySelector('#error');
-const reader = document.querySelector('#reader');
-const status = document.querySelector('#status');
-const dropZone = document.querySelector('#drop-zone');
-const openButton = document.querySelector('#open');
-const emptyButton = document.querySelector('#empty-open');
+function requireElement<T extends HTMLElement>(selector: string, elementType: { new(): T }): T {
+  const element = document.querySelector(selector);
+  if (!(element instanceof elementType)) throw new Error(`Missing or invalid element: ${selector}`);
+  return element;
+}
+
+const article = requireElement('#document', HTMLElement);
+const empty = requireElement('#empty', HTMLElement);
+const error = requireElement('#error', HTMLElement);
+const reader = requireElement('#reader', HTMLElement);
+const statusLabel = requireElement('#status', HTMLElement);
+const dropZone = requireElement('#drop-zone', HTMLElement);
+const openButton = requireElement('#open', HTMLButtonElement);
+const emptyButton = requireElement('#empty-open', HTMLButtonElement);
+const filename = requireElement('#filename', HTMLElement);
+const fileDetail = requireElement('#file-detail', HTMLElement);
+const modifier = requireElement('#modifier', HTMLElement);
 let requestId = 0;
 let choosing = false;
 
-if (/Mac/.test(navigator.platform)) document.querySelector('#modifier').textContent = '⌘';
+if (/Mac/.test(navigator.platform)) modifier.textContent = '⌘';
 
-function showError(message) {
+function showError(message: unknown): void {
   error.textContent = String(message);
   error.hidden = false;
 }
 
-function prepareDocument() {
-  const slugs = new Map();
-  article.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach((heading) => {
+function prepareDocument(): void {
+  const slugs = new Map<string, number>();
+  article.querySelectorAll<HTMLElement>('h1,h2,h3,h4,h5,h6').forEach((heading) => {
     if (heading.id) return;
-    const base = heading.textContent.toLowerCase().trim().replace(/[^\p{L}\p{N}\s_-]/gu, '').replace(/\s+/g, '-') || 'section';
+    const base = (heading.textContent ?? '').toLowerCase().trim().replace(/[^\p{L}\p{N}\s_-]/gu, '').replace(/\s+/g, '-') || 'section';
     const count = slugs.get(base) || 0;
     slugs.set(base, count + 1);
     heading.id = count ? `${base}-${count}` : base;
@@ -42,15 +51,15 @@ function prepareDocument() {
   });
 }
 
-async function openDocument(operation) {
+async function openDocument(operation: () => Promise<RenderedDocument | null>): Promise<void> {
   const id = ++requestId;
   error.hidden = true;
-  status.textContent = 'Abriendo…';
+  statusLabel.textContent = 'Abriendo…';
   try {
     const doc = await operation();
     if (id !== requestId) return;
     if (!doc) {
-      status.textContent = article.hidden ? 'Listo para leer' : 'Solo lectura';
+      statusLabel.textContent = article.hidden ? 'Listo para leer' : 'Solo lectura';
       return;
     }
     article.innerHTML = doc.html;
@@ -59,10 +68,10 @@ async function openDocument(operation) {
     empty.hidden = true;
     reader.scrollTop = 0;
     reader.focus({ preventScroll: true });
-    document.querySelector('#filename').textContent = doc.name;
-    document.querySelector('#filename').title = doc.path;
-    document.querySelector('#file-detail').textContent = doc.bytes < 1024 ? `${doc.bytes} B` : `${(doc.bytes / 1024).toFixed(1)} KB`;
-    status.textContent = 'Solo lectura';
+    filename.textContent = doc.name;
+    filename.title = doc.path;
+    fileDetail.textContent = doc.bytes < 1024 ? `${doc.bytes} B` : `${(doc.bytes / 1024).toFixed(1)} KB`;
+    statusLabel.textContent = 'Solo lectura';
     // The second animation frame runs after the browser had an opportunity to
     // paint the new document. Images do not delay the text-ready measurement.
     requestAnimationFrame(() => requestAnimationFrame(async () => {
@@ -77,11 +86,11 @@ async function openDocument(operation) {
   } catch (message) {
     if (id !== requestId) return;
     showError(message);
-    status.textContent = article.hidden ? 'No se pudo abrir el archivo' : 'Solo lectura';
+    statusLabel.textContent = article.hidden ? 'No se pudo abrir el archivo' : 'Solo lectura';
   }
 }
 
-async function chooseDocument() {
+async function chooseDocument(): Promise<void> {
   if (choosing) return;
   choosing = true;
   openButton.disabled = true;
@@ -107,7 +116,8 @@ document.addEventListener('keydown', (event) => {
 
 // Keep every navigation inside the reader under our control, including middle
 // clicks. Only web/mail links can reach the OS opener.
-async function handleLink(event) {
+async function handleLink(event: MouseEvent): Promise<void> {
+  if (!(event.target instanceof Element)) return;
   const link = event.target.closest('a');
   if (!link) return;
   event.preventDefault();
@@ -125,7 +135,7 @@ article.addEventListener('auxclick', handleLink);
 document.addEventListener('dragover', (event) => event.preventDefault());
 document.addEventListener('drop', (event) => event.preventDefault());
 
-async function start() {
+async function start(): Promise<void> {
   const initialRequest = requestId;
   // Listen before consuming the pending path so OS open events cannot be lost
   // while the WebView is starting.
@@ -135,7 +145,8 @@ async function start() {
     listen('tauri://drag-leave', () => { dropZone.hidden = true; }),
     listen('tauri://drag-drop', ({ payload }) => {
       dropZone.hidden = true;
-      if (payload.paths?.[0]) openDocument(() => invoke('open_document', { path: payload.paths[0] }));
+      const path = payload.paths[0];
+      if (path) openDocument(() => invoke('open_document', { path }));
     }),
   ]);
   const initialDocument = await invoke('take_pending_document');

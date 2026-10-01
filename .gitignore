@@ -8,3 +8,4 @@ src-tauri/gen/
 artifacts/
 __pycache__/
 AGENTS.md
+dist/
