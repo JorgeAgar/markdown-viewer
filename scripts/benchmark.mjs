@@ -6,7 +6,7 @@ import { performance } from 'node:perf_hooks';
 const binary = resolve(process.env.MD_VIEWER_BINARY || `src-tauri/target/release/markdown-viewer${process.platform === 'win32' ? '.exe' : ''}`);
 const document = resolve(process.argv[2] || 'examples/bienvenido.md');
 const runs = Number(process.argv[3] || 5);
-if (!existsSync(binary)) throw new Error('Compila primero con npm run build:binary.');
+if (!existsSync(binary)) throw new Error('Compila primero con pnpm build:binary.');
 if (!existsSync(document)) throw new Error('No existe el documento.');
 if (!Number.isInteger(runs) || runs < 1 || runs > 100) throw new Error('Usa entre 1 y 100 aperturas.');
 

@@ -21,7 +21,7 @@ El visor admite tablas, listas de tareas, citas, bloques de código, notas al pi
 
 ## Desarrollo
 
-Necesitas Node.js 24, npm y Rust estable, además de los [requisitos de Tauri](https://v2.tauri.app/start/prerequisites/) para tu sistema. Windows necesita las herramientas de C++ y WebView2; macOS, las herramientas de Xcode; Linux, GTK y WebKitGTK.
+Necesitas Node.js 24, pnpm y Rust estable, además de los [requisitos de Tauri](https://v2.tauri.app/start/prerequisites/) para tu sistema. Windows necesita las herramientas de C++ y WebView2; macOS, las herramientas de Xcode; Linux, GTK y WebKitGTK.
 
 En Ubuntu o Debian:
 
@@ -34,21 +34,21 @@ sudo apt-get install -y build-essential pkg-config libssl-dev libgtk-3-dev \
 En la raíz del repositorio:
 
 ```sh
-npm ci
-npm run dev
+pnpm install --frozen-lockfile
+pnpm dev
 ```
 
 Para abrir directamente un documento durante el desarrollo, pasa su ruta absoluta:
 
 ```sh
-npm run dev -- -- /ruta/completa/archivo.md
+pnpm run dev -- /ruta/completa/archivo.md
 ```
 
 ## Compilación
 
 ```sh
-npm run build:binary
-npm run build
+pnpm build:binary
+pnpm build
 ```
 
 El primer comando genera el ejecutable optimizado en `src-tauri/target/release/`. El segundo también genera los paquetes de instalación admitidos por el sistema de compilación en `src-tauri/target/release/bundle/`.
@@ -58,8 +58,8 @@ Compila cada versión en su sistema correspondiente. El workflow de GitHub Actio
 ## Validación
 
 ```sh
-npm test
-npm run check
+pnpm test
+pnpm check
 ```
 
 Las pruebas cubren el renderizado, la limpieza de HTML activo, rutas con espacios y Unicode, archivos inválidos, límites de tamaño e imágenes locales fuera de la carpeta del documento.
@@ -79,15 +79,15 @@ El paquete del driver se llama `webkitgtk-webdriver` en versiones recientes de U
 Cierra cualquier instancia abierta y compila en modo release:
 
 ```sh
-npm run build:binary
-npm run benchmark -- examples/bienvenido.md 5
+pnpm build:binary
+pnpm benchmark examples/bienvenido.md 5
 ```
 
 La medición comienza al entrar en `main` y termina tras dos llamadas a `requestAnimationFrame` después de insertar el documento. Es una aproximación al primer pintado del texto; no es una medición del compositor ni incluye la carga de todas las imágenes. El script también informa el tiempo desde la creación del proceso hasta su salida.
 
 No se muestra una ventana de carga ni se espera por recursos de red para mostrar el texto. Las imágenes se cargan con `loading="lazy"`. Las imágenes locales se leen al convertir el documento, por lo que su tamaño sí afecta a la apertura.
 
-La primera ejecución del script no garantiza cachés frías. Para comparar equipos, mide también después de reiniciar, usa el mismo archivo y registra sistema, CPU y tamaño del documento. En Linux sin pantalla puedes usar `xvfb-run -a dbus-run-session -- npm run benchmark`, pero esos resultados no representan una sesión de escritorio real.
+La primera ejecución del script no garantiza cachés frías. Para comparar equipos, mide también después de reiniciar, usa el mismo archivo y registra sistema, CPU y tamaño del documento. En Linux sin pantalla puedes usar `xvfb-run -a dbus-run-session -- pnpm run benchmark`, pero esos resultados no representan una sesión de escritorio real.
 
 ## Límites del prototipo
 

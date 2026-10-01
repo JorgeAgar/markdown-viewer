@@ -23,10 +23,13 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.4.2
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: npm
+          cache: pnpm
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -38,10 +41,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
-      - run: npm ci
-      - run: npm run check
-      - run: npm test
-      - run: npm run build -- --bundles ${{ runner.os == 'Linux' && 'deb' || runner.os == 'Windows' && 'nsis' || 'dmg' }}
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm test
+      - run: pnpm run build --bundles ${{ runner.os == 'Linux' && 'deb' || runner.os == 'Windows' && 'nsis' || 'dmg' }}
       - name: Test Linux WebView and measure startup
         if: runner.os == 'Linux'
         env:
@@ -50,7 +53,7 @@ jobs:
           sudo apt-get install -y webkit2gtk-driver xvfb xdotool
           cargo install tauri-driver --locked
           xvfb-run -a dbus-run-session -- python3 scripts/smoke.py
-          xvfb-run -a dbus-run-session -- npm run benchmark -- examples/bienvenido.md 5 > artifacts/benchmark.txt
+          xvfb-run -a dbus-run-session -- pnpm run benchmark examples/bienvenido.md 5 > artifacts/benchmark.txt
       - uses: actions/upload-artifact@v4
         with:
           name: markdown-viewer-${{ runner.os }}
