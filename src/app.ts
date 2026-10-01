@@ -78,6 +78,7 @@ async function openDocument(operation: () => Promise<RenderedDocument | null>): 
       if (id !== requestId) return;
       try {
         const elapsed = await invoke('content_painted', { hasDocument: true });
+        if (id !== requestId) return;
         article.dataset.readyMs = elapsed.toFixed(2);
       } catch (message) {
         console.error(message);
@@ -154,4 +155,7 @@ async function start(): Promise<void> {
     await openDocument(() => Promise.resolve(initialDocument));
   }
 }
-start().catch(showError);
+start().catch((message) => {
+  // Any user or OS opening supersedes the initial pending-file read.
+  if (requestId === 0) showError(message);
+});

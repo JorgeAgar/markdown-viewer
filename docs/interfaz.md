@@ -82,6 +82,8 @@ Cada llamada a `openDocument` aumenta `requestId`. Cuando llega una respuesta, l
 
 Por ejemplo, abres A y después B. Si B termina antes y A llega tarde, la interfaz descarta A y sigue mostrando B. La lectura de A no se cancela en Rust; JavaScript descarta su resultado. También descarta los errores de peticiones anteriores.
 
+La lectura inicial del archivo pendiente tampoco puede reemplazar una apertura posterior ni mostrar un error obsoleto sobre ella. La respuesta de `content_painted` se aplica solo si su documento sigue correspondiendo a la petición más reciente.
+
 `choosing` evita abrir varios selectores nativos a la vez. Mientras el selector está activo, ambos botones de apertura quedan desactivados. Al terminar, incluso si hay un error, un bloque `finally` vuelve a activarlos.
 
 ## 5. Qué prepara antes de mostrar el HTML
@@ -119,5 +121,7 @@ El tiempo devuelto se guarda en `data-ready-ms` del artículo. Es un dato de med
 Para modificar la distribución o la tipografía, empieza por HTML y CSS. Para añadir una interacción o preparar un nuevo elemento del documento, revisa `app.ts`. Una nueva operación sobre archivos debe pasar por la [coordinación en Rust](coordinacion-rust.md).
 
 [`scripts/smoke.py`](../scripts/smoke.py) comprueba la interfaz real en Linux, incluidas aperturas, errores, imágenes y selector nativo. Consulta [Validación](../README.md#validación) para ejecutarlo.
+
+Para comprobar la interacción sin compilar Rust, ejecuta `pnpm test:frontend`. [`tests/frontend.test.ts`](../tests/frontend.test.ts) carga el HTML real y el JavaScript compilado en un DOM independiente por prueba. Controla las respuestas de Tauri y los fotogramas para probar carreras de apertura sin esperas temporizadas. El comando también comprueba los tipos de las pruebas contra el contrato compartido. Estas pruebas no comprueban el pintado del WebView ni el selector del sistema; `smoke.py` mantiene esa validación en Linux.
 
 Mermaid, las fórmulas y el resaltado de código aún no están implementados. Su incorporación requeriría revisar el procesamiento, la preparación del HTML y la política de contenido de Tauri.

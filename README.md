@@ -68,7 +68,9 @@ pnpm test
 pnpm check
 ```
 
-`pnpm check` prepara el frontend con comprobación de tipos y comprueba el formato y los avisos de Rust. `pnpm test` también prepara el frontend antes de las pruebas Rust, porque Tauri necesita los archivos para compilar. Para comprobar solo TypeScript, usa `pnpm check:frontend`.
+`pnpm check` prepara el frontend con comprobación de tipos y comprueba el formato y los avisos de Rust. `pnpm test` prepara el frontend, ejecuta sus pruebas de comportamiento y después las pruebas Rust, porque Tauri necesita los archivos para compilar. Para comprobar solo TypeScript, usa `pnpm check:frontend`.
+
+`pnpm test:frontend` comprueba tipos y comportamiento de la interfaz sin compilar Rust ni arrancar Tauri. Las pruebas ejecutan el JavaScript de producción en jsdom con el HTML de la app y respuestas controladas de Tauri. Cubren aperturas simultáneas, cancelación y errores del selector, recuperación de los botones, archivos pendientes durante el arranque y respuestas tardías de la medición de pintado. Los documentos y el sustituto de Tauri usan los tipos de `src/tauri.d.ts`. jsdom y sus tipos son dependencias de desarrollo; no se incluyen en la aplicación.
 
 `src/tauri.d.ts` se genera a partir de los comandos registrados en `src-tauri/src/main.rs`, sus argumentos y resultados, los campos de `Document` con `Serialize` y las emisiones de eventos propios. `pnpm check:ipc` compara la declaración guardada con Rust y ejecuta pruebas que introducen cambios incompatibles. También forma parte de `pnpm check` y `pnpm test`. Esta herramienta compila un crate pequeño con `syn`; no compila Tauri ni necesita GTK o WebKit.
 
