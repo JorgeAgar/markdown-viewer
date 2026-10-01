@@ -41,7 +41,7 @@ pnpm dev
 Para abrir directamente un documento durante el desarrollo, pasa su ruta absoluta:
 
 ```sh
-pnpm run dev -- -- /ruta/completa/archivo.md
+pnpm run dev -- /ruta/completa/archivo.md
 ```
 
 ## Compilación
@@ -80,7 +80,7 @@ Cierra cualquier instancia abierta y compila en modo release:
 
 ```sh
 pnpm build:binary
-pnpm benchmark -- examples/bienvenido.md 5
+pnpm benchmark examples/bienvenido.md 5
 ```
 
 La medición comienza al entrar en `main` y termina tras dos llamadas a `requestAnimationFrame` después de insertar el documento. Es una aproximación al primer pintado del texto; no es una medición del compositor ni incluye la carga de todas las imágenes. El script también informa el tiempo desde la creación del proceso hasta su salida.
