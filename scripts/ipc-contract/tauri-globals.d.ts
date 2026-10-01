@@ -1,22 +1,3 @@
-// Generated from Rust by pnpm generate:ipc. Do not edit.
-// Checked by pnpm check:ipc; this is not runtime payload validation.
-interface RenderedDocument {
-  path: string;
-  name: string;
-  html: string;
-  bytes: number;
-}
-
-interface ViewerCommands {
-  take_pending_document: { args: undefined; result: RenderedDocument | null };
-  open_document: { args: { path: string }; result: RenderedDocument };
-  choose_document: { args: undefined; result: RenderedDocument | null };
-  open_link: { args: { href: string }; result: null };
-  content_painted: { args: { hasDocument: boolean }; result: number };
-}
-
-interface ViewerEvents {
-  'file-pending': null;
   // Tauri 2 WebView events, not emitted by this project's Rust code.
   // https://docs.rs/tauri/latest/tauri/webview/enum.DragDropEvent.html
   'tauri://drag-enter': { paths: string[]; position: { x: number; y: number } };

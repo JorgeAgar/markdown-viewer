@@ -8,12 +8,14 @@
     "dev": "pnpm build:frontend && tauri dev",
     "build": "tauri build",
     "build:binary": "tauri build --no-bundle",
-    "test": "pnpm build:frontend && cargo test --manifest-path src-tauri/Cargo.toml",
-    "check": "pnpm build:frontend && node --check scripts/frontend.mjs && cargo fmt --manifest-path src-tauri/Cargo.toml -- --check && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
+    "test": "pnpm check:ipc && pnpm build:frontend && cargo test --manifest-path src-tauri/Cargo.toml",
+    "check": "pnpm check:ipc && pnpm build:frontend && node --check scripts/frontend.mjs && cargo fmt --manifest-path scripts/ipc-contract/Cargo.toml -- --check && cargo fmt --manifest-path src-tauri/Cargo.toml -- --check && cargo clippy --manifest-path scripts/ipc-contract/Cargo.toml --all-targets -- -D warnings && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
     "benchmark": "node scripts/benchmark.mjs",
     "build:frontend": "node scripts/frontend.mjs",
     "watch:frontend": "node scripts/frontend.mjs --watch",
-    "check:frontend": "tsc --noEmit"
+    "check:frontend": "tsc --noEmit",
+    "check:ipc": "cargo run --locked --manifest-path scripts/ipc-contract/Cargo.toml -- --check && cargo test --locked --manifest-path scripts/ipc-contract/Cargo.toml",
+    "generate:ipc": "cargo run --locked --manifest-path scripts/ipc-contract/Cargo.toml -- --write"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.12.1",
