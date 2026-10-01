@@ -4,6 +4,10 @@ Prototipo de un visor de Markdown para Windows, Linux y macOS. Abre un archivo y
 
 La interfaz usa HTML, CSS y JavaScript sin frameworks ni dependencias de ejecución en JavaScript. Rust lee el archivo, convierte Markdown a HTML con `pulldown-cmark` y lo limpia con `ammonia`. Tauri 2 integra la ventana, los archivos y el navegador del sistema.
 
+## Documentación
+
+En [`docs/arquitectura.md`](docs/arquitectura.md) se explica cómo funciona la app, con diagramas de sus componentes y del recorrido de un archivo. La carpeta `docs/` reúne la documentación del proyecto.
+
 ## Uso
 
 - Abre un archivo con el botón, `Ctrl+O` o `⌘O` en macOS.
