@@ -2,7 +2,7 @@
 
 Prototipo de un visor de Markdown para Windows, Linux y macOS. Abre un archivo y muestra su contenido en una sola ventana de solo lectura.
 
-La interfaz usa HTML, CSS y JavaScript sin frameworks ni dependencias de ejecución en JavaScript. Rust lee el archivo, convierte Markdown a HTML con `pulldown-cmark` y lo limpia con `ammonia`. Tauri 2 integra la ventana, los archivos y el navegador del sistema.
+La interfaz usa HTML, CSS y TypeScript sin frameworks ni dependencias de ejecución en JavaScript. Rust lee el archivo, convierte Markdown a HTML con `pulldown-cmark` y lo limpia con `ammonia`. Tauri 2 integra la ventana, los archivos y el navegador del sistema.
 
 ## Documentación
 
@@ -44,12 +44,18 @@ Para abrir directamente un documento durante el desarrollo, pasa su ruta absolut
 pnpm run dev -- /ruta/completa/archivo.md
 ```
 
+`pnpm dev` prepara primero la interfaz y después inicia Tauri con recompilación de TypeScript y copia de HTML y CSS al editar. Tauri recarga la vista al cambiar los archivos generados.
+
+Las fuentes viven en `src/`. TypeScript genera `dist/app.js` y el script `scripts/frontend.mjs` copia allí `index.html` y `style.css`. `dist/` se genera automáticamente y no se sube al repositorio.
+
 ## Compilación
 
 ```sh
 pnpm build:binary
 pnpm build
 ```
+
+Ambos comandos preparan la interfaz mediante el hook `beforeBuildCommand` de Tauri. También puedes generar solo los archivos del frontend con `pnpm build:frontend`, sin compilar Rust.
 
 El primer comando genera el ejecutable optimizado en `src-tauri/target/release/`. El segundo también genera los paquetes de instalación admitidos por el sistema de compilación en `src-tauri/target/release/bundle/`.
 
@@ -61,6 +67,10 @@ Compila cada versión en su sistema correspondiente. El workflow de GitHub Actio
 pnpm test
 pnpm check
 ```
+
+`pnpm check` prepara el frontend con comprobación de tipos y comprueba el formato y los avisos de Rust. `pnpm test` también prepara el frontend antes de las pruebas Rust, porque Tauri necesita los archivos para compilar. Para comprobar solo TypeScript, usa `pnpm check:frontend`.
+
+Los contratos de comandos y eventos están en `src/tauri.d.ts`. Se mantienen junto a sus implementaciones Rust; estas declaraciones no validan los datos en ejecución. La interfaz comprueba que los elementos esperados existen y tienen el tipo adecuado antes de usarlos.
 
 Las pruebas cubren el renderizado, la limpieza de HTML activo, rutas con espacios y Unicode, archivos inválidos, límites de tamaño e imágenes locales fuera de la carpeta del documento.
 
