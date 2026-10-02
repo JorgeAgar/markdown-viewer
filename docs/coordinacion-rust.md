@@ -2,7 +2,7 @@
 
 Esta pieza conecta la interfaz con el sistema operativo y con el procesador de documentos. Recibe peticiones para abrir archivos, usa el selector nativo y entrega los resultados a JavaScript.
 
-Es la segunda pieza de [la arquitectura](arquitectura.md) y está en [`src-tauri/src/main.rs`](../src-tauri/src/main.rs). Los diagramas describen el prototipo actual y usan Mermaid. GitHub los renderiza; nuestro visor todavía los muestra como código.
+Es la segunda pieza de [la arquitectura](arquitectura.md) y está en [`src-tauri/src/main.rs`](../src-tauri/src/main.rs). Los diagramas describen el prototipo actual y usan Mermaid. GitHub y el visor los renderizan.
 
 ## 1. Qué coordina
 

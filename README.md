@@ -2,13 +2,17 @@
 
 Prototipo de un visor de Markdown para Windows, Linux y macOS. Abre un archivo y muestra su contenido en una sola ventana de solo lectura.
 
-La interfaz usa HTML, CSS y TypeScript sin frameworks ni dependencias de ejecución en JavaScript. Rust lee el archivo, convierte Markdown a HTML con `pulldown-cmark` y lo limpia con `ammonia`. Tauri 2 integra la ventana, los archivos y el navegador del sistema.
+La interfaz usa HTML, CSS y TypeScript sin frameworks. Rust lee el archivo, convierte Markdown a HTML con `pulldown-cmark` y lo limpia con `ammonia`. Mermaid dibuja los diagramas en el WebView; DOMPurify y css-tree filtran el SVG y sus estilos. Estas bibliotecas se incluyen en la app y se cargan bajo demanda. Tauri 2 integra la ventana, los archivos y el navegador del sistema.
 
 ## Documentación
 
 En [`docs/arquitectura.md`](docs/arquitectura.md) se explica cómo funciona la app, con diagramas de sus componentes y del recorrido de un archivo. La carpeta `docs/` reúne la documentación del proyecto.
 
 Los documentos de [la interfaz](docs/interfaz.md), [la coordinación en Rust](docs/coordinacion-rust.md) y [el procesamiento del documento](docs/procesamiento-documento.md) explican cada pieza con más detalle.
+
+El [plan de renderizado Mermaid](docs/plan-mermaid.html) propone la implementación, las precauciones y la arquitectura resultante, con diagramas incluidos en un HTML que se puede abrir sin conexión.
+
+La [documentación de Mermaid](docs/mermaid.md) describe el uso, los límites y la implementación de la función.
 
 ## Uso
 
@@ -17,7 +21,18 @@ Los documentos de [la interfaz](docs/interfaz.md), [la coordinación en Rust](do
 - Pasa una ruta como argumento al ejecutable.
 - Tras instalar, elige Markdown Viewer en "Abrir con" para archivos `.md`, `.markdown`, `.mdown` y `.mkd`. El sistema decide la aplicación predeterminada.
 
-El visor admite tablas, listas de tareas, citas, bloques de código, notas al pie e imágenes. Usa el tema claro u oscuro del sistema. Una segunda apertura envía el archivo a la ventana existente; al cerrar la ventana, la aplicación termina.
+El visor admite tablas, listas de tareas, citas, bloques de código, notas al pie, imágenes y diagramas Mermaid. Usa el tema claro u oscuro del sistema. Una segunda apertura envía el archivo a la ventana existente; al cerrar la ventana, la aplicación termina.
+
+Para incluir un diagrama, usa un bloque de código con lenguaje `mermaid`:
+
+````md
+```mermaid
+flowchart LR
+    A[Abrir archivo] --> B[Leer documento]
+```
+````
+
+Los diagramas funcionan sin internet y se dibujan después de mostrar el texto. Cada uno conserva su definición en "Ver código". Un error de sintaxis muestra un aviso junto al bloque y no impide seguir leyendo. Puedes abrir [`examples/mermaid.md`](examples/mermaid.md) para ver los tipos admitidos y los casos de error.
 
 ## Desarrollo
 
@@ -46,7 +61,7 @@ pnpm run dev -- /ruta/completa/archivo.md
 
 `pnpm dev` prepara primero la interfaz y después inicia Tauri con recompilación de TypeScript y copia de HTML y CSS al editar. Tauri recarga la vista al cambiar los archivos generados.
 
-Las fuentes viven en `src/`. TypeScript genera `dist/app.js` y el script `scripts/frontend.mjs` copia allí `index.html` y `style.css`. `dist/` se genera automáticamente y no se sube al repositorio.
+Las fuentes viven en `src/`. `scripts/frontend.mjs` comprueba los tipos con TypeScript, empaqueta `dist/app.js` y los módulos de carga diferida con esbuild, y copia `index.html` y `style.css`. `dist/` se genera automáticamente y no se sube al repositorio. El adaptador `scripts/mermaid-build.mjs` permite usar estilos Mermaid filtrados con el nonce de Tauri; al actualizar la biblioteca hay que revisar ese adaptador.
 
 ## Compilación
 
@@ -70,7 +85,7 @@ pnpm check
 
 `pnpm check` prepara el frontend con comprobación de tipos y comprueba el formato y los avisos de Rust. `pnpm test` prepara el frontend, ejecuta sus pruebas de comportamiento y después las pruebas Rust, porque Tauri necesita los archivos para compilar. Para comprobar solo TypeScript, usa `pnpm check:frontend`.
 
-`pnpm test:frontend` comprueba tipos y comportamiento de la interfaz sin compilar Rust ni arrancar Tauri. Las pruebas ejecutan el JavaScript de producción en jsdom con el HTML de la app y respuestas controladas de Tauri. Cubren aperturas simultáneas, cancelación y errores del selector, recuperación de los botones, archivos pendientes durante el arranque y respuestas tardías de la medición de pintado. Los documentos y el sustituto de Tauri usan los tipos de `src/tauri.d.ts`. jsdom y sus tipos son dependencias de desarrollo; no se incluyen en la aplicación.
+`pnpm test:frontend` comprueba tipos y comportamiento de la interfaz sin compilar Rust ni arrancar Tauri. Las pruebas empaquetan las mismas fuentes de la app en un formato que jsdom puede ejecutar, con respuestas controladas de Tauri y un sustituto asíncrono del renderizador Mermaid. Cubren aperturas simultáneas, cancelación y errores del selector, recuperación de botones, archivos pendientes, medición de pintado, carga diferida, cola de diagramas, cambios de tema, límites y resultados tardíos. Otras pruebas ejecutan el saneador SVG y CSS real. Los documentos y el sustituto de Tauri usan los tipos de `src/tauri.d.ts`. Los paquetes ESM de producción y el renderizado real se comprueban en el WebView con `smoke.py`; jsdom no calcula el diseño de los diagramas.
 
 `src/tauri.d.ts` se genera a partir de los comandos registrados en `src-tauri/src/main.rs`, sus argumentos y resultados, los campos de `Document` con `Serialize` y las emisiones de eventos propios. `pnpm check:ipc` compara la declaración guardada con Rust y ejecuta pruebas que introducen cambios incompatibles. También forma parte de `pnpm check` y `pnpm test`. Esta herramienta compila un crate pequeño con `syn`; no compila Tauri ni necesita GTK o WebKit.
 
@@ -103,7 +118,7 @@ pnpm benchmark examples/bienvenido.md 5
 
 La medición comienza al entrar en `main` y termina tras dos llamadas a `requestAnimationFrame` después de insertar el documento. Es una aproximación al primer pintado del texto; no es una medición del compositor ni incluye la carga de todas las imágenes. El script también informa el tiempo desde la creación del proceso hasta su salida.
 
-No se muestra una ventana de carga ni se espera por recursos de red para mostrar el texto. Las imágenes se cargan con `loading="lazy"`. Las imágenes locales se leen al convertir el documento, por lo que su tamaño sí afecta a la apertura.
+No se muestra una ventana de carga ni se espera por recursos de red para mostrar el texto. Las imágenes se cargan con `loading="lazy"`. Las imágenes locales se leen al convertir el documento, por lo que su tamaño sí afecta a la apertura. Mermaid empieza después de la oportunidad de primer pintado del texto. `data-diagrams-ready-ms` registra aparte el tiempo del lote de diagramas, incluida la carga inicial de la biblioteca.
 
 La primera ejecución del script no garantiza cachés frías. Para comparar equipos, mide también después de reiniciar, usa el mismo archivo y registra sistema, CPU y tamaño del documento. En Linux sin pantalla puedes usar `xvfb-run -a dbus-run-session -- pnpm run benchmark`, pero esos resultados no representan una sesión de escritorio real.
 
@@ -114,4 +129,5 @@ La primera ejecución del script no garantiza cachés frías. Para comparar equi
 - Las imágenes remotas requieren HTTPS y una conexión de red. El texto y las imágenes locales funcionan sin internet.
 - Se elimina HTML activo. Los enlaces web y de correo se abren con la aplicación del sistema; los enlaces a otros archivos locales aún no se abren.
 - Los bloques de código tienen formato monoespaciado, sin resaltado de sintaxis. No hay editor, pestañas, búsqueda, sincronización ni proceso residente.
+- Mermaid admite flujos, secuencias, estados, clases y relaciones entre entidades. Renderiza hasta 50 bloques por documento, con hasta 50.000 unidades UTF-16 por bloque y un límite de 500 aristas de grafo. No admite configuración por bloque, estilos personalizados ni formas con recursos externos. Las acciones de clic están desactivadas.
 - El prototipo requiere pruebas en equipos reales para comparar el tiempo de apertura entre los tres sistemas.

@@ -4,7 +4,7 @@ import { test, type TestContext } from 'node:test';
 import { JSDOM } from 'jsdom';
 
 const html = readFileSync(new URL('../src/index.html', import.meta.url), 'utf8');
-const app = readFileSync(new URL('../dist/app.js', import.meta.url), 'utf8');
+const app = readFileSync(new URL('../artifacts/test-app.js', import.meta.url), 'utf8');
 
 interface CommandCall<K extends keyof ViewerCommands = keyof ViewerCommands> {
   command: K;
@@ -71,6 +71,15 @@ async function createViewer(t: TestContext, finishStartup = true) {
   const tauri = new TauriController();
   const frames: FrameRequestCallback[] = [];
   const consoleErrors: unknown[] = [];
+  const themeListeners = new Set<(event: MediaQueryListEvent) => void>();
+  window.matchMedia = () => ({
+    matches: false,
+    media: '(prefers-color-scheme: dark)',
+    onchange: null,
+    addEventListener: (_type: string, listener: EventListenerOrEventListenerObject | null) => { if (typeof listener === 'function') themeListeners.add(listener as (event: MediaQueryListEvent) => void); },
+    removeEventListener: (_type: string, listener: EventListenerOrEventListenerObject | null) => { if (typeof listener === 'function') themeListeners.delete(listener as (event: MediaQueryListEvent) => void); },
+    addListener: () => {}, removeListener: () => {}, dispatchEvent: () => true,
+  });
   window.__TAURI__ = tauri.api;
   window.requestAnimationFrame = (callback) => frames.push(callback);
   window.console.error = (...args: unknown[]) => { consoleErrors.push(args); };
@@ -129,7 +138,8 @@ async function createViewer(t: TestContext, finishStartup = true) {
     startup.resolve(null);
     await settle();
   }
-  return { window, tauri, startup, element, keyboard, drop, load, assertDocument, assertButtons, paint };
+  function changeTheme(dark: boolean) { themeListeners.forEach(listener => listener({ matches: dark } as MediaQueryListEvent)); }
+  return { window, tauri, startup, element, keyboard, drop, load, assertDocument, assertButtons, paint, changeTheme };
 }
 
 test('startup without a pending file leaves the empty view ready', async (t) => {
@@ -315,3 +325,26 @@ test('an obsolete content_painted response cannot update the current document me
   viewer.assertDocument(rendered('new.md'));
   assert.equal(viewer.element('document').dataset.readyMs, '20.00');
 });
+
+for (const outcome of ['cancel', 'error'] as const) {
+  test(`Mermaid rendering survives a newer picker ${outcome} on the same visible document`, async t => {
+    const viewer = await createViewer(t);
+    const source = 'flowchart LR\nA-->B';
+    viewer.window.__renderMermaidForTests = async () => {
+      return viewer.window.document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    };
+    const doc = { ...rendered('mermaid.md'), html: `<pre><code class="language-mermaid">${source}</code></pre>` };
+    await viewer.load(doc);
+    assert.equal(viewer.window.__mermaidLoads, undefined, 'Renderer must wait for text paint');
+    viewer.element<HTMLButtonElement>('open').click();
+    const picker = viewer.tauri.take('choose_document');
+    if (outcome === 'cancel') picker.resolve(null);
+    else picker.reject('Picker failed');
+    await settle();
+    await viewer.paint();
+    assert.equal(viewer.tauri.calls.some(call => call.command === 'content_painted'), false);
+    assert.equal(viewer.window.__mermaidLoads, 1);
+    assert.equal(viewer.element('document').querySelector('figure')?.dataset.state, 'ready');
+    assert.equal(viewer.element('document').querySelector('code')?.textContent, source);
+  });
+}
