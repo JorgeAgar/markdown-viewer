@@ -1,4 +1,6 @@
-/* All document HTML is parsed and sanitized in Rust before reaching this view. */
+import { MermaidController } from './mermaid';
+
+/* Document HTML is sanitized in Rust; generated SVG is sanitized separately. */
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 function requireElement<T extends HTMLElement>(selector: string, elementType: { new(): T }): T {
@@ -18,6 +20,8 @@ const emptyButton = requireElement('#empty-open', HTMLButtonElement);
 const filename = requireElement('#filename', HTMLElement);
 const fileDetail = requireElement('#file-detail', HTMLElement);
 const modifier = requireElement('#modifier', HTMLElement);
+const diagrams = new MermaidController(article);
+window.addEventListener('pagehide', () => diagrams.dispose());
 let requestId = 0;
 let choosing = false;
 
@@ -64,6 +68,7 @@ async function openDocument(operation: () => Promise<RenderedDocument | null>): 
     }
     article.innerHTML = doc.html;
     prepareDocument();
+    const renderDiagrams = diagrams.prepare();
     article.hidden = false;
     empty.hidden = true;
     reader.scrollTop = 0;
@@ -75,6 +80,8 @@ async function openDocument(operation: () => Promise<RenderedDocument | null>): 
     // The second animation frame runs after the browser had an opportunity to
     // paint the new document. Images do not delay the text-ready measurement.
     requestAnimationFrame(() => requestAnimationFrame(async () => {
+      // A canceled/failed opening keeps this visible document's diagrams alive.
+      renderDiagrams();
       if (id !== requestId) return;
       try {
         const elapsed = await invoke('content_painted', { hasDocument: true });

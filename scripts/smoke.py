@@ -94,19 +94,11 @@ with tempfile.TemporaryDirectory(prefix="markdown-viewer-smoke-") as temporary:
         assert fixture.read_bytes() == before
         print("PASS: second launch reuses window, Unicode filename, active HTML removed, file unchanged")
 
-        execute_async("""
-            const done = arguments[arguments.length - 1];
-            const path = arguments[0];
-            openDocument(() => window.__TAURI__.core.invoke('open_document', {path})).then(() => done(true), e => done(String(e)));
-        """, [str(ROOT / "examples/bienvenido.md")])
+        subprocess.run([str(BINARY), str(ROOT / "examples/bienvenido.md")], check=True, timeout=10)
         wait_for(lambda: execute("return document.querySelector('#filename').textContent === 'bienvenido.md'"))
-        print("PASS: opening a path through the reader loads the document")
+        print("PASS: opening a path through the system event loads the document")
 
-        execute_async("""
-            const done = arguments[arguments.length - 1];
-            const path = arguments[0];
-            openDocument(() => window.__TAURI__.core.invoke('open_document', {path})).then(() => done(true), e => done(String(e)));
-        """, [str(Path(temporary) / "missing.md")])
+        subprocess.run([str(BINARY), str(Path(temporary) / "missing.md")], check=True, timeout=10)
         wait_for(lambda: execute("return !document.querySelector('#error').hidden"))
         assert execute("return document.querySelector('#document h1').textContent") == "Leer, y ya."
         execute("document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape'}))")
@@ -118,6 +110,37 @@ with tempfile.TemporaryDirectory(prefix="markdown-viewer-smoke-") as temporary:
             window.__TAURI__.core.invoke('open_link', {href: 'file:///etc/passwd'}).then(() => done(false), () => done(true));
         """)
         print("PASS: OS opener refuses local file URLs")
+
+        execute("""
+            window.mermaidCspViolations = [];
+            document.addEventListener('securitypolicyviolation', event => {
+                window.mermaidCspViolations.push({directive: event.violatedDirective, blocked: event.blockedURI});
+            });
+        """)
+        subprocess.run([str(BINARY), str(ROOT / "examples/mermaid.md")], check=True, timeout=10)
+        wait_for(lambda: execute("return document.querySelector('#filename').textContent === 'mermaid.md'"))
+        wait_for(lambda: execute("return document.querySelector('#document').dataset.diagramsReadyMs"), timeout=30)
+        states = execute("return [...document.querySelectorAll('.mermaid-diagram')].map(el => ({state: el.dataset.state, message: el.querySelector('.mermaid-message').textContent}))")
+        print("Mermaid results:", states)
+        assert [state["state"] for state in states] == ["ready"] * 5 + ["error", "error"]
+        assert execute("return document.querySelectorAll('.mermaid-svg svg').length") == 5
+        assert execute("return document.querySelector('.mermaid-render-host') === null")
+        assert execute("return document.querySelector('.mermaid-svg foreignObject, .mermaid-svg script, .mermaid-svg image, .mermaid-svg [style]') === null")
+        assert execute("return [...document.querySelectorAll('.mermaid-svg svg')].every(svg => svg.getBoundingClientRect().width > 0 && svg.querySelector('title'))")
+        assert execute("return [...document.querySelectorAll('.mermaid-svg style')].every(style => style.nonce === document.querySelector('#mermaid-style-nonce').nonce && style.sheet !== null)")
+        violations = execute("return window.mermaidCspViolations")
+        print("Mermaid CSP violations:", violations)
+        assert violations == []
+        execute("document.querySelector('.mermaid-diagram').scrollIntoView()")
+        screenshot("mermaid.png")
+        print("PASS: real SVG for five diagram types, isolated errors, source disclosure, trusted stylesheet nonce")
+
+        for name in ["arquitectura.md", "interfaz.md", "coordinacion-rust.md", "procesamiento-documento.md", "mermaid.md"]:
+            subprocess.run([str(BINARY), str(ROOT / "docs" / name)], check=True, timeout=10)
+            wait_for(lambda: execute("return document.querySelector('#filename').textContent === arguments[0]", [name]))
+            wait_for(lambda: execute("return document.querySelector('#document').dataset.diagramsReadyMs"), timeout=30)
+            assert execute("return [...document.querySelectorAll('.mermaid-diagram')].every(el => el.dataset.state === 'ready')"), name
+        print("PASS: all diagrams in project documentation render in the WebView")
 
         call("DELETE", f"/session/{session}")
         session = None
@@ -146,8 +169,13 @@ with tempfile.TemporaryDirectory(prefix="markdown-viewer-smoke-") as temporary:
         assert execute("return !document.querySelector('#open').disabled")
         print("PASS: selecting a file through the native picker loads the document")
     finally:
-        if session:
-            call("DELETE", f"/session/{session}")
-        driver.terminate()
-        driver.wait(timeout=10)
-        log.close()
+        try:
+            if session:
+                try:
+                    call("DELETE", f"/session/{session}")
+                except (OSError, RuntimeError):
+                    pass  # A crashed WebView must not leave its driver running.
+        finally:
+            driver.terminate()
+            driver.wait(timeout=10)
+            log.close()

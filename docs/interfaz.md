@@ -2,7 +2,7 @@
 
 La interfaz es la parte que ves al abrir Markdown Viewer. Muestra el documento y convierte acciones como pulsar un botón o arrastrar un archivo en peticiones a Rust.
 
-Este documento profundiza en la primera pieza de [la arquitectura](arquitectura.md). Describe el prototipo actual. Los diagramas usan Mermaid; GitHub los renderiza, pero el visor todavía los muestra como código.
+Este documento profundiza en la primera pieza de [la arquitectura](arquitectura.md). Describe el prototipo actual. Los diagramas usan Mermaid y se renderizan en GitHub y en el visor.
 
 ## 1. Los archivos que forman la interfaz
 
@@ -26,6 +26,9 @@ HTML define los elementos, CSS decide cómo se ven y JavaScript actualiza su con
 | [`src/app.ts`](../src/app.ts) | Apertura de documentos, eventos, navegación y preparación del HTML. |
 | [`src/tauri.d.ts`](../src/tauri.d.ts) | Tipos del documento, comandos y eventos que conectan con Rust. |
 | [`scripts/frontend.mjs`](../scripts/frontend.mjs) | Compilación y copia de archivos a `dist/`, con seguimiento de cambios durante el desarrollo. |
+| [`src/mermaid.ts`](../src/mermaid.ts) | Detección, código original, límites, cola y generaciones de documento/tema. |
+| [`src/mermaid-runtime.ts`](../src/mermaid-runtime.ts) | Biblioteca local de Mermaid, configuración estricta y contenedor temporal. |
+| [`src/diagram-svg.ts`](../src/diagram-svg.ts) | Limpieza del SVG, CSS y referencias internas; autorización de estilos mediante nonce. |
 
 ## 2. Qué aparece en la ventana
 
@@ -102,6 +105,10 @@ Las imágenes deben usar HTTPS o una dirección Base64 de un formato admitido. S
 
 El HTML se inserta con `innerHTML` porque tiene etiquetas que el WebView debe interpretar. El nombre del archivo y los errores usan `textContent`, que los muestra como texto. La limpieza previa en Rust es parte necesaria del recorrido del HTML.
 
+Después, `MermaidController.prepare` encuentra `pre > code.language-mermaid` y conserva su `textContent` en una figura con un desplegable "Ver código". Devuelve una función que activa el renderizado tras la oportunidad de primer pintado. `openDocument` no espera los diagramas para terminar la apertura.
+
+Mermaid se carga en un módulo local diferido. Cada SVG se limpia antes de insertarlo mediante `replaceChildren`. Un error muestra un aviso dentro de su figura y deja el código abierto. Una cola evita renderizados simultáneos y comprueba la generación del documento y del tema antes y después de cada espera. Consulta [Mermaid](mermaid.md) para los límites y la política de estilos.
+
 ## 6. Cómo funcionan los enlaces y el diseño
 
 La interfaz escucha los clics en el artículo, incluidos los clics con el botón central. Impide la navegación automática del WebView y decide qué hacer con el destino.
@@ -109,6 +116,8 @@ La interfaz escucha los clics en el artículo, incluidos los clics con el botón
 Un enlace `#seccion` desplaza la lectura hacia el elemento con ese identificador. Un enlace web o de correo llama a `open_link`; Rust valida la dirección y la abre con el sistema. Los demás destinos no se abren.
 
 CSS usa fuentes del sistema, un ancho máximo de lectura de 780 píxeles y desplazamiento horizontal dentro de tablas o bloques de código grandes. Las imágenes se ajustan al ancho disponible. El tema oscuro depende de `prefers-color-scheme`, por lo que sigue la preferencia del sistema sin un control propio.
+
+Los diagramas anchos también tienen desplazamiento horizontal. Al cambiar el tema del sistema, el controlador genera nuevos SVG a partir del código original. Mantiene el estado del desplegable y el foco de quien está leyendo el código.
 
 ## 7. Cómo participa en la medición de apertura
 
@@ -122,6 +131,6 @@ Para modificar la distribución o la tipografía, empieza por HTML y CSS. Para a
 
 [`scripts/smoke.py`](../scripts/smoke.py) comprueba la interfaz real en Linux, incluidas aperturas, errores, imágenes y selector nativo. Consulta [Validación](../README.md#validación) para ejecutarlo.
 
-Para comprobar la interacción sin compilar Rust, ejecuta `pnpm test:frontend`. [`tests/frontend.test.ts`](../tests/frontend.test.ts) carga el HTML real y el JavaScript compilado en un DOM independiente por prueba. Controla las respuestas de Tauri y los fotogramas para probar carreras de apertura sin esperas temporizadas. El comando también comprueba los tipos de las pruebas contra el contrato compartido. Estas pruebas no comprueban el pintado del WebView ni el selector del sistema; `smoke.py` mantiene esa validación en Linux.
+Para comprobar la interacción sin compilar Rust, ejecuta `pnpm test:frontend`. [`tests/frontend.test.ts`](../tests/frontend.test.ts) carga el HTML real y una compilación de las mismas fuentes con un sustituto de Mermaid. Controla las respuestas de Tauri y los fotogramas para probar carreras de apertura. [`tests/mermaid.test.ts`](../tests/mermaid.test.ts) prueba la cola, el tema, los límites, los errores y el saneador real. El comando también comprueba los tipos de las pruebas contra el contrato compartido. Estas pruebas no comprueban el diseño SVG del WebView ni el selector del sistema; `smoke.py` mantiene esa validación en Linux.
 
-Mermaid, las fórmulas y el resaltado de código aún no están implementados. Su incorporación requeriría revisar el procesamiento, la preparación del HTML y la política de contenido de Tauri.
+Las fórmulas y el resaltado de código aún no están implementados. Su incorporación requeriría revisar el procesamiento, la preparación del HTML y la política de contenido de Tauri.

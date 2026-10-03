@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Plan de implementación de Mermaid para Markdown Viewer: arquitectura, integración, seguridad y validación.">
+  <title>Mermaid · Plan de implementación</title>
+  <style>
+    :root { color-scheme: light dark; --paper:#faf9f5; --surface:#fffefb; --ink:#222c32; --muted:#596770; --line:#dce1de; --accent:#17645e; --soft:#edf4ef; --blue:#295d83; --blue-soft:#edf3f9; --warn:#79512d; --warn-soft:#fbf2e5; --code:#edf0eb; }
+    * { box-sizing:border-box; }
+    html { scroll-behavior:smooth; scroll-padding-top:28px; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:16px/1.7 system-ui,-apple-system,"Segoe UI",sans-serif; }
+    a { color:var(--accent); text-underline-offset:3px; }
+    a:hover { text-decoration-thickness:2px; }
+    a:focus-visible,summary:focus-visible { outline:3px solid var(--accent); outline-offset:5px; }
+    .skip { position:absolute; left:16px; top:-80px; background:var(--surface); padding:12px; z-index:2; }
+    .skip:focus { top:12px; }
+    .layout { display:grid; grid-template-columns:235px minmax(0,1fr); max-width:1400px; margin:auto; }
+    aside { padding:42px 25px; border-right:1px solid var(--line); }
+    .side-inner { position:sticky; top:36px; }
+    .brand { font-size:13px; font-weight:750; letter-spacing:.03em; }
+    .brand svg { vertical-align:middle; margin-right:8px; color:var(--accent); }
+    .small { font-size:12px; color:var(--muted); }
+    nav { margin-top:46px; }
+    nav a { display:flex; gap:12px; padding:9px 0; text-decoration:none; color:var(--muted); font-size:13px; }
+    nav a:hover { color:var(--accent); }
+    nav span { color:var(--accent); font:11px/2 ui-monospace,monospace; }
+    .side-note { margin-top:38px; padding-top:18px; border-top:1px solid var(--line); font-size:12px; color:var(--muted); }
+    main { min-width:0; padding:46px clamp(25px,5vw,78px) 80px; }
+    .eyebrow { display:flex; align-items:center; flex-wrap:wrap; gap:12px; color:var(--accent); font-size:11px; letter-spacing:.13em; text-transform:uppercase; font-weight:700; }
+    .pill { border:1px solid var(--line); border-radius:20px; padding:3px 10px; color:var(--muted); font-size:10px; letter-spacing:.05em; }
+    h1 { font:normal clamp(40px,5vw,66px)/1.08 Georgia,"Times New Roman",serif; letter-spacing:-.04em; margin:26px 0 22px; max-width:760px; }
+    h1 span { color:var(--accent); }
+    .lead { font-size:18px; line-height:1.65; max-width:710px; color:var(--muted); }
+    .facts { display:grid; grid-template-columns:repeat(3,1fr); margin-top:34px; border-block:1px solid var(--line); padding:18px 0; gap:18px; }
+    .facts div { font-size:14px; }
+    .facts small { display:block; margin-bottom:3px; font-size:10px; color:var(--muted); letter-spacing:.08em; text-transform:uppercase; }
+    section { margin-top:56px; }
+    .section-heading { display:flex; gap:15px; align-items:baseline; border-bottom:1px solid var(--line); margin-bottom:22px; padding-bottom:12px; }
+    .number { font:12px ui-monospace,monospace; color:var(--accent); }
+    h2 { font-size:24px; font-weight:650; letter-spacing:-.025em; margin:0; line-height:1.35; }
+    h3 { font-size:17px; margin:26px 0 9px; }
+    p { margin:0 0 16px; }
+    strong { font-weight:650; }
+    code { font: .84em/1.6 ui-monospace,SFMono-Regular,Consolas,monospace; overflow-wrap:anywhere; background:var(--code); border-radius:3px; padding:2px 5px; }
+    pre { overflow:auto; border:1px solid var(--line); background:var(--code); padding:20px; border-radius:7px; font-size:13px; line-height:1.7; }
+    pre code { padding:0; background:none; font-size:inherit; white-space:pre; overflow-wrap:normal; }
+    .callout { padding:19px 23px; border-left:3px solid var(--accent); background:var(--soft); margin:23px 0; }
+    .callout p:last-child { margin-bottom:0; }
+    .warning { background:var(--warn-soft); border-color:var(--warn); }
+    .columns { display:grid; grid-template-columns:1fr 1fr; gap:28px; }
+    ul,ol { padding-left:23px; }
+    li { margin:9px 0; }
+    .table-wrap { overflow-x:auto; }
+    table { border-collapse:collapse; width:100%; font-size:14px; margin:22px 0; }
+    th { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.06em; text-align:left; background:var(--soft); }
+    th,td { padding:13px 14px; border-bottom:1px solid var(--line); vertical-align:top; }
+    td:first-child { min-width:165px; }
+    figure { margin:25px 0; }
+    .diagram { overflow:auto; border:1px solid var(--line); border-radius:8px; background:var(--surface); padding:17px; }
+    .diagram svg { display:block; width:100%; height:auto; min-width:650px; }
+    .diagram text { fill:var(--ink); font:14px system-ui,sans-serif; }
+    .diagram .label { fill:var(--muted); font-size:11px; }
+    .diagram .title { font-weight:650; }
+    .diagram .zone { fill:var(--soft); stroke:var(--line); }
+    .diagram .node { fill:var(--surface); stroke:var(--line); stroke-width:1.5; }
+    .diagram .new { fill:var(--blue-soft); stroke:var(--blue); stroke-width:1.5; }
+    .diagram .edge { fill:none; stroke:var(--muted); stroke-width:1.5; }
+    .diagram .async { stroke:var(--blue); stroke-dasharray:6 4; }
+    .diagram .lifeline { stroke:var(--line); stroke-width:2; stroke-dasharray:5 5; }
+    .diagram .bad { fill:var(--warn-soft); stroke:var(--warn); }
+    figcaption { color:var(--muted); font-size:12px; padding-top:11px; }
+    .legend { display:flex; gap:20px; flex-wrap:wrap; color:var(--muted); font-size:12px; }
+    .swatch { width:10px; height:10px; display:inline-block; margin-right:6px; border:1px solid var(--line); background:var(--surface); }
+    .swatch.blue { border-color:var(--blue); background:var(--blue-soft); }
+    details { margin:16px 0; padding:12px 17px; border:1px solid var(--line); border-radius:5px; }
+    summary { cursor:pointer; font-size:13px; color:var(--accent); }
+    .steps { list-style:none; padding:0; counter-reset:step; }
+    .steps > li { position:relative; padding:0 0 22px 45px; margin:0; border-left:1px solid var(--line); margin-left:14px; }
+    .steps > li::before { counter-increment:step; content:counter(step); position:absolute; left:-14px; top:0; width:27px; height:27px; border-radius:50%; background:var(--accent); color:var(--surface); font-size:12px; text-align:center; line-height:27px; }
+    .steps h3 { margin:0 0 8px; }
+    .steps p { margin-bottom:10px; }
+    .gate { font-size:13px; color:var(--accent); }
+    .source-note { font-size:12px; color:var(--muted); }
+    .checks { list-style:none; padding:0; }
+    .checks li { padding:11px 0 11px 28px; position:relative; border-bottom:1px solid var(--line); }
+    .checks li::before { content:""; width:12px; height:12px; border:1px solid var(--accent); position:absolute; left:0; top:19px; border-radius:2px; }
+    footer { margin-top:55px; padding-top:20px; border-top:1px solid var(--line); color:var(--muted); font-size:12px; }
+    @media (max-width:900px) { .layout { grid-template-columns:1fr; } aside { padding:20px 25px; border-right:0; border-bottom:1px solid var(--line); } .side-inner { position:static; } nav { margin-top:13px; display:flex; flex-wrap:wrap; gap:0 20px; } nav a { font-size:12px; padding:4px 0; } .side-note,aside .small { display:none; } main { padding-top:30px; } }
+    @media (max-width:560px) { .facts,.columns { grid-template-columns:1fr; } .facts { gap:14px; } h2 { font-size:22px; } .diagram { padding:10px; } main { padding-inline:20px; } .lead { font-size:16px; } th,td { padding:10px; } }
+    @media (prefers-color-scheme:dark) { :root { --paper:#171e22; --surface:#1d262b; --ink:#e2e9e7; --muted:#a4b4bb; --line:#354249; --accent:#94c8b9; --soft:#21332f; --blue:#8dbce0; --blue-soft:#223340; --warn:#e0b483; --warn-soft:#352b22; --code:#253037; } .steps > li::before { color:var(--paper); } }
+    @media print { :root { color-scheme:light; --paper:white; --surface:white; --ink:#111; --muted:#444; --line:#ccc; --accent:#17645e; --soft:#f3f5f3; --blue:#295d83; --blue-soft:#edf3f9; --warn:#79512d; --warn-soft:#fbf2e5; --code:#f3f3f3; } body { font-size:11px; } .layout { display:block; } aside,.skip { display:none; } main { padding:0; } h1 { font-size:38px; } section { margin-top:28px; } h2 { font-size:20px; } figure,.callout,.steps > li { break-inside:avoid; } .diagram svg { min-width:0; } .table-wrap { overflow:visible; } pre { white-space:pre-wrap; font-size:9px; } pre code { white-space:pre-wrap; } details { display:none; } a { color:inherit; } }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#contenido">Ir al contenido</a>
+  <div class="layout">
+    <aside>
+      <div class="side-inner">
+        <div class="brand"><svg width="20" height="24" viewBox="0 0 20 24" fill="none" aria-hidden="true"><path d="M3 1h9l5 5v17H3zM12 1v6h5M6 12h8M6 16h8" stroke="currentColor" stroke-width="1.5"/></svg>Markdown Viewer</div>
+        <div class="small">Documento de diseño · 01 oct 2026</div>
+        <nav aria-label="Índice del plan">
+          <a href="#decision"><span>01</span>Propuesta</a>
+          <a href="#actual"><span>02</span>Punto de partida</a>
+          <a href="#arquitectura"><span>03</span>Arquitectura resultante</a>
+          <a href="#implementacion"><span>04</span>Implementación</a>
+          <a href="#ciclo"><span>05</span>Ciclo de renderizado</a>
+          <a href="#seguridad"><span>06</span>Seguridad y CSP</a>
+          <a href="#experiencia"><span>07</span>Lectura y rendimiento</a>
+          <a href="#validacion"><span>08</span>Validación y entrega</a>
+          <a href="#referencias"><span>09</span>Referencias</a>
+        </nav>
+        <div class="side-note">Plan basado en el código del repositorio. Los componentes azules de los diagramas representan las piezas propuestas.</div>
+      </div>
+    </aside>
+    <main id="contenido">
+      <header>
+        <div class="eyebrow">Plan de implementación <span class="pill">Propuesta para revisión</span></div>
+        <h1>De bloques de código<br>a <span>diagramas Mermaid.</span></h1>
+        <p class="lead">Añadir diagramas al visor sin retrasar la lectura del Markdown. Rust seguirá procesando el documento; una biblioteca local convertirá los bloques Mermaid en SVG dentro del WebView.</p>
+        <div class="facts">
+          <div><small>Integración</small>Tauri 2 · Rust · TypeScript</div>
+          <div><small>Carga</small>Local y bajo demanda</div>
+          <div><small>Recuperación</small>Código visible si hay un error</div>
+        </div>
+      </header>
+
+      <section id="decision">
+        <div class="section-heading"><span class="number">01</span><h2>Propuesta y alcance</h2></div>
+        <p>Reconocer los bloques cercados con el lenguaje <code>mermaid</code> y dibujarlos después del primer pintado del texto. Un módulo <code>src/mermaid.ts</code> coordinará la carga, el renderizado y los errores. La biblioteca se empaquetará con la app, con versión exacta y dependencias fijadas en <code>pnpm-lock.yaml</code>.</p>
+        <div class="callout"><p>La primera entrega debe renderizar los diagramas que ya existen en <code>docs/</code>: flujos y secuencias. Añadir como casos de aceptación estados, clases y relaciones entre entidades. Documentar el conjunto validado; no prometer todos los tipos de Mermaid sin probarlos.</p></div>
+        <p>El lector conservará el código original en un desplegable "Ver código". Ante sintaxis inválida, un tipo no admitido o un límite excedido, mostrará ese código y un aviso junto al bloque. El resto del documento seguirá disponible.</p>
+        <p>Esta entrega cubre visualización de solo lectura. La exportación, el editor en vivo y las acciones de clic dentro de los diagramas quedarían para una ampliación posterior.</p>
+      </section>
+
+      <section id="actual">
+        <div class="section-heading"><span class="number">02</span><h2>Qué hay en el proyecto</h2></div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Pieza actual</th><th>Consecuencia para Mermaid</th></tr></thead>
+          <tbody>
+            <tr><td><code>document.rs</code></td><td><code>pulldown-cmark</code> produce HTML y <code>ammonia</code> lo limpia. Comprobar que el atributo <code>class="language-mermaid"</code> sobrevive. Si hace falta, permitir <code>class</code> solo en <code>code</code>.</td></tr>
+            <tr><td><code>src/app.ts</code></td><td><code>openDocument</code> inserta el HTML y llama a <code>prepareDocument</code>. Usa <code>requestId</code> para descartar aperturas obsoletas. Mermaid necesita además una generación propia del documento visible y del tema.</td></tr>
+            <tr><td><code>scripts/frontend.mjs</code></td><td>Hoy ejecuta TypeScript y copia HTML/CSS. No empaqueta dependencias npm para el navegador. Hay que incorporar un empaquetador y conservar la comprobación de tipos.</td></tr>
+            <tr><td>Contrato IPC</td><td><code>Document</code> contiene <code>path</code>, <code>name</code>, <code>html</code> y <code>bytes</code>. Detectar Mermaid en el HTML permite mantener ese contrato.</td></tr>
+            <tr><td>CSP y sistemas</td><td><code>style-src 'self'</code> bloquea estilos inline. El frontend apunta a ES2020 y el mínimo configurado de macOS es 10.15. Ambos necesitan una prueba de compatibilidad.</td></tr>
+          </tbody>
+        </table></div>
+        <p class="source-note">Archivos revisados: <a href="../src-tauri/src/document.rs">document.rs</a>, <a href="../src/app.ts">app.ts</a>, <a href="../scripts/frontend.mjs">frontend.mjs</a>, <a href="../src-tauri/tauri.conf.json">tauri.conf.json</a> y <a href="../tests/frontend.test.ts">frontend.test.ts</a>.</p>
+      </section>
+
+      <section id="arquitectura">
+        <div class="section-heading"><span class="number">03</span><h2>Arquitectura resultante</h2></div>
+        <p>El HTML de Rust conserva cada definición como texto escapado dentro de un bloque de código. La interfaz extrae <code>textContent</code>, pide el SVG a Mermaid y valida ese resultado antes de incorporarlo al documento. El SVG generado pertenece a una segunda ruta de limpieza, porque se crea después de <code>ammonia</code>.</p>
+        <figure>
+          <div class="diagram"><svg viewBox="0 0 900 480" role="img" aria-labelledby="arch-title arch-desc">
+            <title id="arch-title">Arquitectura propuesta para Mermaid</title><desc id="arch-desc">Rust lee el archivo, convierte Markdown y limpia HTML con ammonia. Tauri entrega el documento al WebView. app.ts muestra el texto y llama al coordinador Mermaid, que carga recursos locales, genera y limpia SVG y lo añade al lector.</desc>
+            <defs><marker id="arrow-arch" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#71838a"/></marker></defs>
+            <rect class="zone" x="14" y="18" width="275" height="444" rx="12"/><text class="title" x="34" y="46">Rust · procesamiento existente</text>
+            <rect class="node" x="40" y="78" width="225" height="63" rx="7"/><text x="60" y="105">Archivo Markdown</text><text class="label" x="60" y="125">Extensión, UTF-8 y límite de 16 MiB</text>
+            <path class="edge" d="M152 141v30" marker-end="url(#arrow-arch)"/>
+            <rect class="node" x="40" y="175" width="225" height="63" rx="7"/><text x="60" y="202">pulldown-cmark</text><text class="label" x="60" y="223">Mermaid permanece como código</text>
+            <path class="edge" d="M152 238v31" marker-end="url(#arrow-arch)"/>
+            <rect class="node" x="40" y="274" width="225" height="63" rx="7"/><text x="60" y="301">ammonia</text><text class="label" x="60" y="322">Limpieza del HTML del documento</text>
+            <path class="edge" d="M152 337v29" marker-end="url(#arrow-arch)"/>
+            <rect class="node" x="40" y="370" width="225" height="62" rx="7"/><text x="60" y="397">Document → Tauri IPC</text><text class="label" x="60" y="417">html · name · path · bytes</text>
+            <rect class="zone" x="312" y="18" width="574" height="444" rx="12"/><text class="title" x="332" y="46">WebView · texto primero, diagramas después</text>
+            <rect class="node" x="339" y="78" width="250" height="63" rx="7"/><text x="358" y="105">app.ts / prepareDocument</text><text class="label" x="358" y="125">Inserta HTML y muestra el lector</text>
+            <path class="edge" d="M265 402h45V110h25" marker-end="url(#arrow-arch)"/>
+            <path class="edge" d="M589 110h38" marker-end="url(#arrow-arch)"/>
+            <rect class="node" x="633" y="78" width="227" height="63" rx="7"/><text x="650" y="105">Texto visible</text><text class="label" x="650" y="125">content_painted · sin esperar SVG</text>
+            <path class="edge async" d="M464 141v32" marker-end="url(#arrow-arch)"/>
+            <rect class="new" x="339" y="179" width="250" height="73" rx="7"/><text class="title" x="358" y="207">mermaid.ts · coordinador</text><text class="label" x="358" y="230">Cola, límites, tema y generación</text>
+            <path class="edge async" d="M589 215h38" marker-end="url(#arrow-arch)"/>
+            <rect class="new" x="633" y="179" width="227" height="73" rx="7"/><text x="650" y="207">Recursos locales</text><text class="label" x="650" y="230">import() · Mermaid + DOMPurify</text>
+            <path class="edge" d="M464 252v29" marker-end="url(#arrow-arch)"/>
+            <rect class="new" x="339" y="287" width="250" height="63" rx="7"/><text x="358" y="314">mermaid.render(id, source)</text><text class="label" x="358" y="335">Devuelve SVG · sin callbacks de clic</text>
+            <path class="edge" d="M589 319h38" marker-end="url(#arrow-arch)"/>
+            <rect class="new" x="633" y="287" width="227" height="63" rx="7"/><text x="650" y="314">Validación del SVG</text><text class="label" x="650" y="335">DOMPurify + política de recursos</text>
+            <path class="edge" d="M747 350v30" marker-end="url(#arrow-arch)"/>
+            <rect class="new" x="633" y="386" width="227" height="46" rx="7"/><text x="650" y="415">Diagrama + "Ver código"</text>
+            <text class="label" x="339" y="396">Error o límite → código y aviso</text><text class="label" x="339" y="420">No se añade un servicio remoto</text>
+          </svg></div>
+          <figcaption>Figura 1. El renderizador vive en la interfaz. Rust mantiene el control de los archivos y del HTML inicial.</figcaption>
+        </figure>
+        <div class="legend"><span><i class="swatch"></i>Pieza existente</span><span><i class="swatch blue"></i>Pieza nueva o ampliada</span><span>Línea discontinua: trabajo diferido</span></div>
+        <details><summary>Ver la definición Mermaid de esta arquitectura</summary><pre><code>flowchart TB
+  Archivo[Archivo Markdown] --> Parser[pulldown-cmark]
+  Parser --> Limpieza[ammonia]
+  Limpieza --> IPC[Document / Tauri IPC]
+  IPC --> UI[app.ts: HTML y primer pintado]
+  UI -. después del pintado .-> Coordinador[mermaid.ts]
+  Local[Mermaid y DOMPurify locales] -. import .-> Coordinador
+  Coordinador --> Render[mermaid.render]
+  Render --> SVG[Limpieza y validación del SVG]
+  SVG --> Vista[Diagrama y código original]
+  Coordinador --> Error[Código y aviso si falla]</code></pre></details>
+      </section>
+
+      <section id="implementacion">
+        <div class="section-heading"><span class="number">04</span><h2>Cómo implementarlo</h2></div>
+        <ol class="steps">
+          <li><h3>Resolver versión y compatibilidad</h3><p>Probar una versión exacta de Mermaid en los WebViews soportados. La documentación actual de Mermaid 12 indica ES2024 y Safari 17.4 como referencia mínima. El <code>target</code> ES2020 del proyecto no corrige APIs de navegador ausentes. <a href="https://mermaid.js.org/config/usage.html#supported-browsers-and-runtimes">Requisitos oficiales</a>.</p><p>No elevar silenciosamente el mínimo de macOS 10.15. Si la versión probada exige otro mínimo, acordar y documentar el nuevo soporte antes de adoptarla; una versión anterior requiere revisar mantenimiento y avisos de seguridad.</p><p class="gate">Salida: versión fijada, motores mínimos y tipos de diagramas verificados.</p></li>
+          <li><h3>Empaquetar dependencias para el WebView</h3><p>Añadir Mermaid y DOMPurify como dependencias de ejecución, y esbuild como dependencia de desarrollo. En <code>frontend.mjs</code>, ejecutar <code>tsc --noEmit</code> y luego esbuild con <code>bundle: true</code>, <code>format: 'esm'</code>, <code>splitting: true</code> y <code>outdir: 'dist'</code>. Mantener <code>app.js</code> como entrada de <code>index.html</code>, con <code>type="module"</code>.</p><p>Conservar la copia de HTML/CSS, la limpieza en release y el modo de seguimiento compatible con Sprite. El seguimiento recompilará los módulos nuevos; Tauri recargará <code>dist/</code>. Revisar la resolución de módulos de TypeScript y registrar todos los chunks en el paquete. <a href="https://esbuild.github.io/api/#splitting">División de código en esbuild</a>.</p><p class="gate">Salida: instalación empaquetada que renderiza con la red desconectada.</p></li>
+          <li><h3>Preservar e identificar los bloques</h3><p>Añadir una prueba Rust que transforme <code>```mermaid</code> en <code>&lt;pre&gt;&lt;code class="language-mermaid"&gt;</code> con contenido escapado. Cubrir <code>&lt;</code>, <code>&amp;</code>, Unicode y varios bloques. Confirmar el comportamiento real de <code>ammonia</code> antes de ampliar permisos.</p><p>Buscar solo <code>pre &gt; code.language-mermaid</code> dentro del artículo. Leer <code>textContent</code>, nunca <code>innerHTML</code>. Mantener la sintaxis canónica en minúsculas y probar bloques con información adicional. Los demás lenguajes conservan su presentación actual.</p><p class="gate">Salida: detección precisa sin añadir campos o comandos al IPC.</p></li>
+          <li><h3>Añadir el coordinador y conectarlo con la apertura</h3><p>Definir <code>renderMermaid(root, generation, theme)</code> en <code>src/mermaid.ts</code>. Salir sin importar la biblioteca si no hay bloques. Guardar una única promesa de <code>import('mermaid')</code>; reiniciarla si la carga falla para permitir un reintento.</p><p>Crear una cola global con un renderizado activo. Configurar el tema dentro de esa cola y usar un identificador de SVG único por intento. Comprobar generación y <code>isConnected</code> antes y después de cada operación asíncrona. Tras un error, limpiar el contenedor temporal y continuar con el siguiente bloque.</p><p>Iniciar el trabajo después de dar al texto una oportunidad de pintarse. <code>openDocument</code> no espera el renderizado; cada tarea captura sus propios errores. La API <code>render</code> permite controlar la inserción del SVG. <a href="https://mermaid.js.org/config/usage.html#api-usage">API oficial</a>.</p><p class="gate">Salida: varios diagramas correctos; un bloque inválido no interrumpe la lectura.</p></li>
+          <li><h3>Aplicar la política de SVG y completar la experiencia</h3><p>Encapsular limpieza, estilos y validación en <code>sanitizeDiagramSvg</code>. Montar solo su resultado. Crear los avisos y el código mediante APIs del DOM y <code>textContent</code>. Añadir el contenedor con desplazamiento horizontal, el desplegable de código y etiquetas accesibles.</p><p>Actualizar pruebas, ejemplos y documentación. Cambiar la afirmación del README sobre ausencia de dependencias de ejecución; describir las bibliotecas locales y el conjunto de diagramas validado.</p><p class="gate">Salida: controles de seguridad y criterios de aceptación del apartado 08 satisfechos.</p></li>
+        </ol>
+        <details><summary>Ver el flujo orientativo del coordinador</summary><pre><code>// Esquema de diseño. Los helpers se implementan en mermaid.ts.
+async function renderMermaid(root, generation, theme) {
+  const blocks = collectMermaidBlocks(root);
+  if (blocks.length === 0) return;
+  const mermaid = await loadLocalMermaid();
+
+  for (const block of blocks) {
+    await renderQueue.add(async () =&gt; {
+      if (!isCurrent(generation, block)) return;
+      try {
+        enforceLimits(block.source);
+        mermaid.initialize(trustedConfig(theme));
+        const { svg } = await mermaid.render(uniqueId(), block.source);
+        if (!isCurrent(generation, block)) return;
+        const safeSvg = sanitizeDiagramSvg(svg);
+        mountDiagram(block, safeSvg); // conserva source para "Ver código"
+      } catch (error) {
+        if (isCurrent(generation, block)) showBlockError(block, error);
+      } finally {
+        cleanupTemporaryRender();
+      }
+    });
+    await yieldToBrowser();
+  }
+}</code></pre></details>
+      </section>
+
+      <section id="ciclo">
+        <div class="section-heading"><span class="number">05</span><h2>Ciclo de renderizado y aperturas simultáneas</h2></div>
+        <figure>
+          <div class="diagram"><svg viewBox="0 0 900 390" role="img" aria-labelledby="seq-title seq-desc">
+            <title id="seq-title">Orden del primer pintado y del renderizado diferido</title><desc id="seq-desc">Rust entrega HTML a la interfaz. El lector muestra el texto y registra content_painted tras dos fotogramas. Después el coordinador importa Mermaid local, genera SVG, comprueba la generación y actualiza solo el bloque vigente.</desc>
+            <defs><marker id="arrow-seq" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#71838a"/></marker></defs>
+            <rect class="node" x="24" y="14" width="130" height="43" rx="6"/><text class="title" x="69" y="41">Rust</text>
+            <rect class="node" x="232" y="14" width="160" height="43" rx="6"/><text class="title" x="270" y="41">Interfaz</text>
+            <rect class="node" x="472" y="14" width="160" height="43" rx="6"/><text class="title" x="516" y="41">Lector</text>
+            <rect class="new" x="698" y="14" width="176" height="43" rx="6"/><text class="title" x="722" y="41">Coordinador</text>
+            <path class="lifeline" d="M89 57v310M312 57v310M552 57v310M786 57v310"/>
+            <path class="edge" d="M89 98h220" marker-end="url(#arrow-seq)"/><text class="label" x="130" y="88">HTML limpio y metadatos</text>
+            <path class="edge" d="M312 143h236" marker-end="url(#arrow-seq)"/><text class="label" x="346" y="132">Inserta texto y prepara documento</text>
+            <rect class="zone" x="420" y="159" width="265" height="38" rx="5"/><text x="439" y="184">Texto disponible para leer</text>
+            <path class="edge" d="M312 218H92" marker-end="url(#arrow-seq)"/><text class="label" x="113" y="208">Dos rAF → content_painted</text>
+            <path class="edge async" d="M312 259h470" marker-end="url(#arrow-seq)"/><text class="label" x="430" y="249">Activa cola e importación local</text>
+            <rect class="new" x="686" y="276" width="197" height="41" rx="5"/><text class="label" x="698" y="301">render → limpia → valida generación</text>
+            <path class="edge" d="M786 347H557" marker-end="url(#arrow-seq)"/><text class="label" x="566" y="338">Monta SVG o aviso por bloque</text>
+          </svg></div>
+          <figcaption>Figura 2. La medición de apertura sigue midiendo el texto. Los diagramas tienen una medición separada.</figcaption>
+        </figure>
+        <p>Separar <code>requestId</code>, que identifica una petición de apertura, de <code>renderGeneration</code>, que identifica el documento visible y su tema. Una apertura cancelada o fallida conserva el documento anterior; no debe dejar sus diagramas cancelados para siempre.</p>
+        <p>Incrementar la generación al reemplazar el artículo o al cambiar el tema. Cancelar las tareas pendientes de generaciones anteriores. Un renderizado en curso puede terminar, pero su resultado se descarta y se limpia si dejó de ser vigente.</p>
+        <figure>
+          <div class="diagram"><svg viewBox="0 0 900 210" role="img" aria-labelledby="race-title race-desc">
+            <title id="race-title">Control de resultados tardíos</title><desc id="race-desc">El diagrama del documento A comienza con generación 7. El usuario abre B y cambia a generación 8. Cuando termina el SVG de A se descarta. Solo se monta el SVG que corresponde a la generación 8.</desc>
+            <defs><marker id="arrow-race" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#71838a"/></marker></defs>
+            <text class="title" x="20" y="28">Apertura A · generación 7</text><text class="title" x="20" y="128">Apertura B · generación 8</text>
+            <rect class="new" x="20" y="43" width="210" height="48" rx="6"/><text x="37" y="73">Empieza SVG de A</text>
+            <path class="edge async" d="M230 67h312" marker-end="url(#arrow-race)"/><text class="label" x="303" y="53">A termina cuando B ya está visible</text>
+            <rect class="bad" x="549" y="43" width="325" height="48" rx="6"/><text x="565" y="73">7 ≠ 8 · descartar y limpiar SVG de A</text>
+            <rect class="node" x="266" y="143" width="220" height="48" rx="6"/><text x="282" y="173">Reemplaza artículo por B</text>
+            <path class="edge" d="M486 167h56" marker-end="url(#arrow-race)"/>
+            <rect class="new" x="549" y="143" width="325" height="48" rx="6"/><text x="565" y="173">8 = 8 · montar SVG de B</text>
+          </svg></div>
+          <figcaption>Figura 3. Comprobar la generación después de cada espera impide que A modifique la vista de B.</figcaption>
+        </figure>
+      </section>
+
+      <section id="seguridad">
+        <div class="section-heading"><span class="number">06</span><h2>Seguridad y política de contenido</h2></div>
+        <div class="columns">
+          <div><h3>Configuración controlada por la app</h3><p>Usar <code>securityLevel: 'strict'</code>, <code>startOnLoad: false</code>, <code>htmlLabels: false</code> y <code>suppressErrorRendering: true</code>. El modo estricto desactiva las acciones de clic; no llamar a <code>bindFunctions</code>. <a href="https://mermaid.js.org/config/usage.html#securitylevel">Nivel de seguridad</a>.</p><p>Preservar las claves protegidas por defecto de <code>secure</code> y añadir <code>htmlLabels</code>, <code>themeCSS</code>, <code>dompurifyConfig</code>, <code>theme</code> y <code>themeVariables</code>. Rechazar en la primera entrega frontmatter y directivas de configuración por bloque con un aviso. Probar que no pueden cambiar estas reglas. <a href="https://mermaid.js.org/config/schema-docs/config.html#secure">Opciones protegidas</a>.</p></div>
+          <div><h3>SVG como contenido no confiable</h3><p>Limpiar con DOMPurify usando perfiles SVG y filtros SVG; bloquear <code>foreignObject</code>, scripts, eventos, enlaces y recursos externos. Mantener referencias locales <code>#id</code> para marcadores. DOMPurify admite SVG, pero la restricción de recursos y CSS requiere una política adicional de la app. <a href="https://github.com/cure53/DOMPurify#what-is-supported">Soporte de DOMPurify</a>.</p><p>Validar <code>href</code>, <code>xlink:href</code> y valores CSS que cargan recursos. Permitir solo referencias al propio SVG. No añadir SVG crudo de Markdown a las etiquetas aceptadas por <code>ammonia</code>.</p></div>
+        </div>
+        <div class="callout warning"><p><strong>La CSP es una condición de entrega.</strong> Los SVG de Mermaid incluyen estilos dinámicos que <code>style-src 'self'</code> puede bloquear. Abrir <code>style-src</code> con <code>'unsafe-inline'</code> afectaría también al HTML del documento. La prueba debe usar la CSP real de Tauri, no solo un navegador sin restricciones.</p></div>
+        <p>Propuesta: conservar las directivas existentes y añadir un nonce a cada elemento <code>&lt;style&gt;</code> aprobado del SVG. Obtener el nonce de un recurso de confianza que Tauri procese, y aplicarlo durante la limpieza. Antes de montarlo, analizar el CSS, limitar selectores al identificador único del SVG y rechazar <code>@import</code>, URLs externas y reglas fuera del diagrama. Eliminar atributos <code>style</code> o trasladar sus propiedades admitidas a reglas con ese nonce.</p>
+        <p>Probar que el saneador conserva únicamente el CSS aprobado y sus nonces. Si la versión de Tauri no facilita un nonce reutilizable o los tipos de diagramas no funcionan al transformar sus estilos, esta estrategia necesita revisión antes de integrar. Los hashes generados al compilar no autorizan CSS que solo se conoce al abrir un archivo. <a href="https://v2.tauri.app/security/csp/">Cómo Tauri aplica la CSP</a>.</p>
+        <p>Usar un contenedor temporal visible para el motor de diseño pero fuera de la pantalla; <code>display:none</code> puede impedir medir etiquetas. Mantenerlo fuera del artículo, con <code>aria-hidden="true"</code> y limpieza en <code>finally</code>. La limpieza posterior del SVG no protege ese DOM temporal: revisar el comportamiento de la versión fijada bajo CSP y configuración estricta. Si esa fase permite contenido activo, el prototipo no cumple el plan.</p>
+        <h3>Límites iniciales propuestos</h3>
+        <div class="table-wrap"><table><thead><tr><th>Control</th><th>Valor de partida</th><th>Respuesta</th></tr></thead><tbody>
+          <tr><td>Fuente por bloque</td><td>50.000 unidades de texto</td><td>Comprobar antes de renderizar y configurar <code>maxTextSize</code>.</td></tr>
+          <tr><td>Aristas de grafo</td><td>500</td><td>Configurar <code>maxEdges</code>; no equivale a un límite universal de complejidad.</td></tr>
+          <tr><td>Bloques por documento</td><td>50 automáticos</td><td>Los restantes conservan el código y explican el límite.</td></tr>
+          <tr><td>Concurrencia</td><td>1 renderizado activo</td><td>Cola con pausas entre bloques y descarte de tareas obsoletas.</td></tr>
+        </tbody></table></div>
+        <p>Son valores propuestos para medir y ajustar. <code>Promise.race</code> con un temporizador no detiene un cálculo síncrono que bloquea el WebView. Los límites reducen el riesgo, pero no garantizan un tiempo máximo; una cancelación fuerte requiere aislamiento y una arquitectura adicional.</p>
+      </section>
+
+      <section id="experiencia">
+        <div class="section-heading"><span class="number">07</span><h2>Lectura, temas y rendimiento</h2></div>
+        <ul>
+          <li>Mostrar el código mientras el diagrama se prepara. Un error se anuncia junto al bloque y conserva la fuente, sin activar el error global de apertura.</li>
+          <li>Responder a <code>matchMedia('(prefers-color-scheme: dark)')</code>. Guardar la fuente original y volver a renderizar al cambiar el tema, usando otra generación y la misma cola.</li>
+          <li>Usar fuentes del sistema y esperar a <code>document.fonts.ready</code> cuando proceda. Verificar etiquetas largas, acentos y tamaños del SVG en los tres motores.</li>
+          <li>Conservar <code>viewBox</code>, evitar recortes y ofrecer desplazamiento horizontal para diagramas anchos. Probar la ventana mínima de 400 píxeles y ampliación al 200 %.</li>
+          <li>Conservar o crear <code>title</code> y <code>desc</code> accesibles, y usar un nombre de diagrama si la fuente no lo trae. El desplegable "Ver código" funciona con teclado y no debe perder el foco al cambiar de tema.</li>
+          <li>Mantener <code>content_painted</code> para el texto. Medir por separado carga de Mermaid, tiempo de cada SVG, final del lote y tamaño añadido a la distribución.</li>
+          <li>Comparar apertura sin Mermaid, con un diagrama y con 50 diagramas. No fijar una mejora de tiempo o un tamaño sin medir el paquete release.</li>
+        </ul>
+        <p>La primera entrega procesa los bloques en orden. Si los documentos grandes retrasan el uso del lector, una segunda iteración puede priorizar diagramas próximos a la vista con <code>IntersectionObserver</code>. No hace falta añadir caché de SVG al primer cambio.</p>
+      </section>
+
+      <section id="validacion">
+        <div class="section-heading"><span class="number">08</span><h2>Validación y entrega</h2></div>
+        <p>La implementación debe distinguir pruebas de coordinación de pruebas de renderizado real. jsdom no calcula el diseño SVG como un WebView.</p>
+        <div class="table-wrap"><table><thead><tr><th>Prueba</th><th>Qué debe demostrar</th></tr></thead><tbody>
+          <tr><td>Rust · <code>document.rs</code></td><td>Clase de lenguaje preservada, fuente escapada, varios bloques y limpieza de HTML malicioso. Regresiones de imágenes y enlaces cubiertas.</td></tr>
+          <tr><td>TypeScript · <code>frontend.test.ts</code></td><td>Importación solo cuando hace falta; una carga compartida; error por bloque; cola; límites; cambio de tema; A/B; apertura cancelada o fallida; resultado tardío; reintento de carga.</td></tr>
+          <tr><td>Adaptación de pruebas</td><td>Hoy las pruebas leen <code>dist/app.js</code> y usan <code>window.eval</code>. Al pasar a ESM con chunks, añadir una compilación de prueba IIFE con un renderizador sustituible, manteniendo la misma entrada <code>app.ts</code>. La carga ESM de producción se comprueba en WebView.</td></tr>
+          <tr><td>WebView · <code>smoke.py</code></td><td>SVG real, CSP sin infracciones inesperadas, etiquetas y flechas visibles, cambio de tema, segunda apertura, varios tipos de diagramas y funcionamiento sin red.</td></tr>
+          <tr><td>Contenido hostil</td><td>Directivas que intentan cambiar seguridad, etiquetas HTML, enlaces <code>javascript:</code>, eventos, <code>foreignObject</code>, CSS fuera del diagrama y recursos externos rechazados, también durante el render temporal.</td></tr>
+          <tr><td>Distribución</td><td>Paquetes Windows, Linux y macOS con todos los chunks. Comprobar WebView2, WebKitGTK y WKWebView en las versiones mínimas acordadas.</td></tr>
+        </tbody></table></div>
+        <h3>Archivos previstos</h3>
+        <p><code>package.json</code>, <code>pnpm-lock.yaml</code>, <code>scripts/frontend.mjs</code>, <code>tsconfig.json</code>, <code>src/index.html</code>, <code>src/app.ts</code>, el nuevo <code>src/mermaid.ts</code>, <code>src/style.css</code>, <code>src-tauri/tauri.conf.json</code>, pruebas, ejemplos y documentación. <code>document.rs</code> necesita pruebas y solo un ajuste de permisos si se confirma necesario.</p>
+        <h3>Comprobaciones de la implementación</h3>
+        <pre><code>pnpm check
+pnpm test
+pnpm build:binary
+# En Linux, con las herramientas nativas del proyecto:
+xvfb-run -a dbus-run-session -- python3 scripts/smoke.py
+# En una sesión real de escritorio y con la instancia cerrada:
+pnpm benchmark examples/bienvenido.md 5</code></pre>
+        <p>Añadir <code>examples/mermaid.md</code> con los tipos validados, un error de sintaxis y texto antes y después. Crear una variante con 50 bloques para medir la cola.</p>
+        <h3>Criterios para considerar terminada la función</h3>
+        <ul class="checks">
+          <li>Los diagramas existentes de <code>docs/</code> se ven correctamente y funcionan sin conexión.</li>
+          <li>Un documento sin Mermaid no carga la biblioteca; su texto conserva la medición de apertura.</li>
+          <li>Un bloque inválido o limitado conserva el código y no afecta a otros diagramas.</li>
+          <li>Aperturas A/B, cancelación y cambios de tema no insertan SVG obsoleto ni dejan residuos temporales.</li>
+          <li>Los diagramas respetan la CSP y no ejecutan acciones ni cargan recursos definidos por el documento.</li>
+          <li>La lectura con teclado, el código original y ambos temas funcionan en ventanas estrechas.</li>
+          <li>Los paquetes incluyen todos los recursos y se documentan los mínimos de sistema comprobados.</li>
+        </ul>
+      </section>
+
+      <section id="referencias">
+        <div class="section-heading"><span class="number">09</span><h2>Referencias y decisiones pendientes</h2></div>
+        <p>El diseño se apoya en la arquitectura actual del repositorio. Las decisiones que debe cerrar el primer prototipo son la versión exacta de Mermaid, los WebViews mínimos y la viabilidad del tratamiento de estilos con nonce. El resto del plan puede avanzar con el contrato IPC actual.</p>
+        <ul>
+          <li><a href="arquitectura.md">Arquitectura del visor</a> y <a href="procesamiento-documento.md">procesamiento del documento</a>.</li>
+          <li><a href="https://mermaid.js.org/config/usage.html">Mermaid: uso, renderizado y requisitos de navegador</a>.</li>
+          <li><a href="https://mermaid.js.org/config/schema-docs/config.html">Mermaid: configuración, límites y claves protegidas</a>.</li>
+          <li><a href="https://mermaid.js.org/config/theming.html">Mermaid: temas</a> y <a href="https://mermaid.js.org/config/configuration.html">configuración por documento</a>.</li>
+          <li><a href="https://v2.tauri.app/security/csp/">Tauri: política de contenido</a>.</li>
+          <li><a href="https://esbuild.github.io/api/#splitting">esbuild: empaquetado con división de código</a>.</li>
+          <li><a href="https://github.com/cure53/DOMPurify">DOMPurify: limpieza de HTML y SVG</a>.</li>
+        </ul>
+      </section>
+      <footer>Plan técnico · Markdown Viewer · Fuentes consultadas el 1 de octubre de 2026.<br>Este HTML es autónomo: incluye los diagramas como SVG y se puede abrir sin internet o imprimir como PDF.</footer>
+    </main>
+  </div>
+</body>
+</html>

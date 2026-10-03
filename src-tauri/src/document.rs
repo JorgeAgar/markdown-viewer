@@ -116,6 +116,7 @@ pub fn render(markdown: &str, directory: &Path) -> String {
         .add_tag_attributes("input", &["type", "checked", "disabled"])
         .add_tag_attributes("th", &["align"])
         .add_tag_attributes("td", &["align"])
+        .add_allowed_classes("code", &["language-mermaid"])
         .add_generic_attributes(&["id"])
         .url_schemes(["https", "http", "mailto", "data"].into_iter().collect())
         .url_relative(ammonia::UrlRelative::Custom(Box::new(relative_url)))
@@ -166,6 +167,32 @@ mod tests {
         assert!(!html.contains("<script"));
         assert!(!html.contains("onerror"));
         assert!(!html.contains("javascript:"));
+    }
+
+    #[test]
+    fn preserves_mermaid_language_and_escaped_source() {
+        let html = render(
+            "```mermaid\nflowchart LR\n  A[\"Café < & >\"] --> B\n```\n\n```rust\nlet n = 1;\n```\n\n```mermaid extra\nsequenceDiagram\n  A->>B: Hola\n```",
+            Path::new("/"),
+        );
+        assert_eq!(html.matches("class=\"language-mermaid\"").count(), 2);
+        assert!(html.contains("Café &lt; &amp; &gt;"));
+        assert!(html.contains("let n = 1;"));
+        assert!(!html.contains("language-rust"));
+        assert!(!html.contains("<svg"));
+    }
+
+    #[test]
+    fn allows_only_the_mermaid_class_on_code() {
+        let html = render(
+            "<div class=\"language-mermaid\">Texto</div>\n\n<pre><code class=\"language-mermaid toolbar mermaid-svg\" style=\"color:red\" onclick=\"alert(1)\">flowchart LR\nA--&gt;B</code></pre>",
+            Path::new("/"),
+        );
+        assert_eq!(html.matches("class=\"language-mermaid\"").count(), 1);
+        assert!(!html.contains("toolbar"));
+        assert!(!html.contains("mermaid-svg"));
+        assert!(!html.contains("style="));
+        assert!(!html.contains("onclick="));
     }
 
     #[test]

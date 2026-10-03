@@ -2,7 +2,7 @@
 
 Markdown Viewer abre un archivo Markdown y lo muestra en una ventana de solo lectura. El objetivo es que puedas empezar a leer con poca espera, sin abrir un editor.
 
-Este documento describe el prototipo actual. Los diagramas usan Mermaid. GitHub puede mostrarlos como diagramas; por ahora, nuestra app los muestra como bloques de código. Cada diagrama tiene una explicación que permite entenderlo también sin renderizarlo.
+Este documento describe el prototipo actual. Los diagramas usan Mermaid y se muestran tanto en GitHub como en el visor. Cada diagrama conserva su definición en "Ver código" y tiene una explicación que permite entenderlo también sin renderizarlo.
 
 Para profundizar en cada pieza, continúa con [La interfaz](interfaz.md), [La coordinación en Rust](coordinacion-rust.md) y [El procesamiento del documento](procesamiento-documento.md).
 
@@ -33,6 +33,7 @@ La interfaz pide abrir un archivo. Rust lo lee y devuelve HTML listo para mostra
 | Procesamiento del documento | Valida el archivo, convierte Markdown a HTML y limpia el resultado. | [`src-tauri/src/document.rs`](../src-tauri/src/document.rs) |
 | Configuración de Tauri | Define la ventana, las reglas de contenido y los paquetes de instalación. | [`src-tauri/tauri.conf.json`](../src-tauri/tauri.conf.json) |
 | Permisos de eventos | Permite que la interfaz escuche eventos de la ventana principal. | [`src-tauri/capabilities/main.json`](../src-tauri/capabilities/main.json) |
+| Diagramas | Carga Mermaid bajo demanda, coordina el renderizado y limpia SVG y estilos. | [`src/mermaid.ts`](../src/mermaid.ts), [`src/mermaid-runtime.ts`](../src/mermaid-runtime.ts) y [`src/diagram-svg.ts`](../src/diagram-svg.ts) |
 
 La interfaz vive dentro de un WebView, una vista que muestra HTML usando el motor web disponible en el sistema. La app no necesita un servidor remoto para leer documentos.
 
@@ -86,7 +87,7 @@ Durante ese procesamiento, Rust resuelve las imágenes Markdown locales y las in
 
 `ammonia` elimina elementos y atributos peligrosos, como scripts y manejadores de eventos. El visor muestra el HTML permitido con nuestro CSS, que sigue el tema claro u oscuro del sistema.
 
-Los bloques de código se muestran con letra monoespaciada. Actualmente no hay resaltado de sintaxis, renderizado de Mermaid ni fórmulas matemáticas. Tampoco hemos verificado el visor contra toda la suite de CommonMark.
+Los bloques de código se muestran con letra monoespaciada. Los bloques con lenguaje `mermaid` se convierten después en diagramas SVG. No hay resaltado de sintaxis ni fórmulas matemáticas. Tampoco hemos verificado el visor contra toda la suite de CommonMark.
 
 ## 4. Cómo llega un archivo desde el sistema operativo
 
@@ -115,11 +116,13 @@ El contenido del archivo pasa por estas reglas antes de mostrarse:
 
 La política de contenido de Tauri, llamada CSP, limita qué puede cargar o ejecutar el WebView. Los scripts y estilos deben venir de la app; el documento no puede añadir scripts propios, marcos ni formularios funcionales.
 
+Mermaid genera SVG después de la limpieza Rust. Una segunda limpieza con DOMPurify elimina contenido activo y recursos externos; css-tree limita sus estilos a propiedades de dibujo y selectores dentro del SVG. Los estilos aprobados reciben el nonce de un elemento de confianza del HTML de la app. La CSP conserva `style-src 'self'`, sin permitir estilos inline arbitrarios. La [documentación de Mermaid](mermaid.md) describe el adaptador de empaquetado y las restricciones.
+
 Las imágenes relativas escritas como HTML crudo no siguen el tratamiento de las imágenes Markdown y se eliminan sus rutas relativas durante la limpieza.
 
 ## 6. Qué decisiones ayudan a abrir rápido
 
-La interfaz usa archivos estáticos sin frameworks ni dependencias de ejecución en JavaScript. Rust convierte el documento dentro de la app y Tauri utiliza el WebView del sistema.
+La interfaz usa archivos estáticos sin frameworks. Rust convierte el documento dentro de la app y Tauri utiliza el WebView del sistema. Las bibliotecas de Mermaid y limpieza se cargan solo si hay un bloque admitido.
 
 El texto no espera a que se descarguen imágenes remotas. Las imágenes usan carga diferida con `loading="lazy"`. Las imágenes locales sí se leen durante la conversión, por lo que un documento con muchas imágenes puede tardar más.
 
@@ -127,17 +130,32 @@ El texto no espera a que se descarguen imágenes remotas. Las imágenes usan car
 
 Para comparar resultados entre Windows, Linux y macOS hay que medir en equipos reales con el mismo documento. El [README](../README.md#medición-de-apertura) explica cómo ejecutar esa medición.
 
-## 7. Dónde añadir futuras funciones de visualización
+## 7. Visualización de Mermaid y futuras ampliaciones
 
-Estas ampliaciones todavía no están implementadas:
+Mermaid ya está implementado. El recorrido añade una etapa asíncrona después del primer pintado del texto:
+
+```mermaid
+flowchart TD
+    HTML["HTML limpio de Rust"] --> Texto["Texto visible y medición de apertura"]
+    Texto --> Bloques["mermaid.ts: identifica bloques y crea una cola"]
+    Bloques --> Local["Carga local de Mermaid"]
+    Local --> SVG["Genera SVG en un contenedor temporal"]
+    SVG --> Limpieza["DOMPurify y css-tree limpian SVG y estilos"]
+    Limpieza --> Vigente{"¿Sigue vigente el documento y el tema?"}
+    Vigente -->|Sí| Diagrama["Muestra SVG y conserva el código"]
+    Vigente -->|No| Descartar["Descarta el resultado"]
+```
+
+La cola procesa un diagrama a la vez. Una generación del documento visible y del tema evita insertar resultados obsoletos. Esta generación es independiente del contador de peticiones de apertura, para que cancelar un selector no detenga los diagramas del documento que sigue abierto.
+
+Estas ampliaciones siguen pendientes:
 
 | Función | Cómo encajaría |
 | --- | --- |
-| Mermaid | Detectar sus bloques de código y cargar una biblioteca local para convertirlos en diagramas. |
 | Fórmulas | Reconocer la sintaxis matemática y añadir un renderizador de fórmulas. |
 | Resaltado de código | Detectar el lenguaje de los bloques y aplicar el resaltado. |
 
-La propuesta es mostrar primero el texto y cargar cada renderizador solo cuando el documento lo necesite. Las bibliotecas se incluirían en la app para funcionar sin internet. Habría que medir su efecto en la apertura y revisar cómo interactúan con la limpieza de HTML y la CSP.
+Para ampliar la visualización, se debe mostrar primero el texto y cargar cada renderizador solo cuando haga falta. Las bibliotecas deben incluirse en la app para funcionar sin internet. También hay que medir su efecto en la apertura y revisar la limpieza y la CSP.
 
 ## 8. Cómo comprobamos que funciona
 

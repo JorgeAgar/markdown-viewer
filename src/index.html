@@ -6,7 +6,9 @@
     <meta name="color-scheme" content="light dark" />
     <title>Markdown Viewer</title>
     <link rel="stylesheet" href="style.css" />
-    <script src="app.js" defer></script>
+    <!-- Tauri supplies the nonce used only for filtered Mermaid styles. -->
+    <style id="mermaid-style-nonce"></style>
+    <script src="app.js" type="module"></script>
   </head>
   <body>
     <header class="toolbar">
