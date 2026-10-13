@@ -1,4 +1,13 @@
-use std::{fs::File, io::Read, path::Path};
+use std::{
+    collections::HashSet,
+    fs::File,
+    io::Read,
+    path::{Path, PathBuf},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
+};
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use pulldown_cmark::{html, CowStr, Event, Options, Parser, Tag};
@@ -11,10 +20,94 @@ const MAX_TOTAL_IMAGE_BYTES: usize = 32 * 1024 * 1024;
 
 #[derive(Serialize)]
 pub struct Document {
+    pub id: String,
     pub path: String,
     pub name: String,
     pub html: String,
     pub bytes: usize,
+}
+
+pub struct LoadedDocument {
+    pub document: Document,
+    pub images: LocalImages,
+}
+
+pub struct LocalImages {
+    id: String,
+    directory: PathBuf,
+    sources: Vec<String>,
+    active: AtomicBool,
+    // Serializing reads keeps the budget exact, including concurrent requests.
+    budget: Mutex<(usize, HashSet<usize>)>,
+}
+
+impl LocalImages {
+    pub fn resolve(&self, image_id: usize) -> Result<String, String> {
+        let mut budget = self.budget.lock().unwrap();
+        if !self.active.load(Ordering::Relaxed) {
+            return Err("La apertura ya no está activa.".to_owned());
+        }
+        let source = self
+            .sources
+            .get(image_id)
+            .ok_or("La imagen no pertenece al documento.")?;
+        if !budget.1.insert(image_id) {
+            return Err("La imagen ya se solicitó.".to_owned());
+        }
+        image_source(source, &self.directory, &mut budget.0)
+            .ok_or("No se pudo cargar la imagen.".to_owned())
+    }
+}
+
+#[derive(Default)]
+pub struct ImageStore {
+    latest: u64,
+    current: Option<Arc<LocalImages>>,
+    pending: Option<LocalImages>,
+}
+
+impl ImageStore {
+    pub fn begin(&mut self) -> String {
+        self.latest += 1;
+        self.latest.to_string()
+    }
+
+    pub fn publish(&mut self, loaded: LoadedDocument) -> Document {
+        if loaded.document.id == self.latest.to_string() {
+            self.pending = Some(loaded.images);
+        }
+        loaded.document
+    }
+
+    pub fn activate(&mut self, document_id: &str) -> Result<(), String> {
+        if self
+            .current
+            .as_ref()
+            .is_some_and(|images| images.id == document_id)
+        {
+            return Ok(());
+        }
+        if !self
+            .pending
+            .as_ref()
+            .is_some_and(|images| images.id == document_id)
+        {
+            return Err("La apertura ya no está disponible.".to_owned());
+        }
+        if let Some(previous) = self.current.take() {
+            previous.active.store(false, Ordering::Relaxed);
+        }
+        self.current = self.pending.take().map(Arc::new);
+        Ok(())
+    }
+
+    pub fn get(&self, document_id: &str) -> Result<Arc<LocalImages>, String> {
+        self.current
+            .as_ref()
+            .filter(|images| images.id == document_id)
+            .cloned()
+            .ok_or("La apertura ya no está activa.".to_owned())
+    }
 }
 
 pub fn is_markdown(path: &Path) -> bool {
@@ -58,13 +151,14 @@ fn image_source(source: &str, directory: &Path, remaining: &mut usize) -> Option
     if source.starts_with(['/', '\\']) {
         return None;
     }
-    let directory = directory.canonicalize().ok()?;
+    // The directory was canonicalized when the Markdown was opened. Keep that
+    // boundary even if a directory is later replaced by a symlink.
     // URL joining decodes spaces and UTF-8 in Markdown image paths. Canonicalization
     // also prevents symlinks and ../ from escaping the document's directory.
-    let base = Url::from_directory_path(&directory).ok()?;
+    let base = Url::from_directory_path(directory).ok()?;
     let path = base.join(source).ok()?.to_file_path().ok()?;
     let path = path.canonicalize().ok()?;
-    if !path.starts_with(&directory) {
+    if !path.starts_with(directory) {
         return None;
     }
     let mime = match path.extension()?.to_str()?.to_ascii_lowercase().as_str() {
@@ -86,12 +180,12 @@ fn relative_url(url: &str) -> Option<std::borrow::Cow<'_, str>> {
         .then_some(std::borrow::Cow::Borrowed(url))
 }
 
-pub fn render(markdown: &str, directory: &Path) -> String {
+fn render(markdown: &str, document_id: &str) -> (String, Vec<String>) {
     let options = Options::ENABLE_TABLES
         | Options::ENABLE_STRIKETHROUGH
         | Options::ENABLE_TASKLISTS
         | Options::ENABLE_FOOTNOTES;
-    let mut remaining = MAX_TOTAL_IMAGE_BYTES;
+    let mut sources = Vec::new();
     let parser = Parser::new_ext(markdown, options).map(|event| match event {
         Event::Start(Tag::Image {
             link_type,
@@ -99,7 +193,20 @@ pub fn render(markdown: &str, directory: &Path) -> String {
             title,
             id,
         }) => {
-            let source = image_source(&dest_url, directory, &mut remaining).unwrap_or_default();
+            // This phase never touches image files, including their metadata.
+            let source = if let Ok(url) = Url::parse(&dest_url) {
+                if url.scheme() == "https" {
+                    url.to_string()
+                } else {
+                    String::new()
+                }
+            } else if dest_url.starts_with(['/', '\\']) {
+                String::new()
+            } else {
+                let marker = format!("#local-image-{document_id}-{}", sources.len());
+                sources.push(dest_url.into_string());
+                marker
+            };
             Event::Start(Tag::Image {
                 link_type,
                 dest_url: CowStr::from(source),
@@ -111,7 +218,7 @@ pub fn render(markdown: &str, directory: &Path) -> String {
     });
     let mut output = String::with_capacity(markdown.len());
     html::push_html(&mut output, parser);
-    ammonia::Builder::default()
+    let html = ammonia::Builder::default()
         .add_tags(&["input"])
         .add_tag_attributes("input", &["type", "checked", "disabled"])
         .add_tag_attributes("th", &["align"])
@@ -121,10 +228,11 @@ pub fn render(markdown: &str, directory: &Path) -> String {
         .url_schemes(["https", "http", "mailto", "data"].into_iter().collect())
         .url_relative(ammonia::UrlRelative::Custom(Box::new(relative_url)))
         .clean(&output)
-        .to_string()
+        .to_string();
+    (html, sources)
 }
 
-pub fn load(path: &Path) -> Result<Document, String> {
+pub fn load(path: &Path, id: String) -> Result<LoadedDocument, String> {
     if !is_markdown(path) {
         return Err("Selecciona un archivo .md, .markdown, .mdown o .mkd.".to_owned());
     }
@@ -134,19 +242,27 @@ pub fn load(path: &Path) -> Result<Document, String> {
     let bytes = read_limited(&path, MAX_DOCUMENT_BYTES)?;
     let text = std::str::from_utf8(&bytes)
         .map_err(|_| "El archivo debe estar guardado con codificación UTF-8.".to_owned())?;
-    let html = render(
-        text.trim_start_matches('\u{feff}'),
-        path.parent().unwrap_or(Path::new(".")),
-    );
-    Ok(Document {
-        name: path
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .into_owned(),
-        path: path.to_string_lossy().into_owned(),
-        html,
-        bytes: bytes.len(),
+    let (html, sources) = render(text.trim_start_matches('\u{feff}'), &id);
+    let images = LocalImages {
+        id: id.clone(),
+        directory: path.parent().unwrap_or(Path::new(".")).to_owned(),
+        sources,
+        active: AtomicBool::new(true),
+        budget: Mutex::new((MAX_TOTAL_IMAGE_BYTES, HashSet::new())),
+    };
+    Ok(LoadedDocument {
+        document: Document {
+            id,
+            name: path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned(),
+            path: path.to_string_lossy().into_owned(),
+            html,
+            bytes: bytes.len(),
+        },
+        images,
     })
 }
 
@@ -155,6 +271,18 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::tempdir;
+
+    fn render(markdown: &str, _directory: &Path) -> String {
+        super::render(markdown, "1").0
+    }
+
+    fn load(path: &Path) -> Result<Document, String> {
+        super::load(path, "1".to_owned()).map(|loaded| loaded.document)
+    }
+
+    fn image_source(source: &str, directory: &Path, remaining: &mut usize) -> Option<String> {
+        super::image_source(source, &directory.canonicalize().ok()?, remaining)
+    }
 
     #[test]
     fn renders_github_markdown_and_removes_active_html() {
@@ -246,7 +374,8 @@ mod tests {
         fs::write(docs.join("secret.txt"), b"secret").unwrap();
         assert!(image_source("secret.txt", &docs, &mut budget).is_none());
         let html = render("![imagen](una%20imagen.png)", &docs);
-        assert!(html.contains("data:image/png;base64,"));
+        assert!(html.contains("#local-image-1-0"));
+        assert!(!html.contains("data:image/"));
     }
 
     #[cfg(unix)]
@@ -260,5 +389,160 @@ mod tests {
             .unwrap();
         let mut budget = MAX_TOTAL_IMAGE_BYTES;
         assert!(image_source("linked.png", &docs, &mut budget).is_none());
+        let path = docs.join("reading.md");
+        fs::write(&path, "![link](linked.png)").unwrap();
+        let loaded = super::load(&path, "1".into()).unwrap();
+        assert!(loaded.images.resolve(0).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_a_directory_replaced_by_a_symlink_after_opening() {
+        let dir = tempdir().unwrap();
+        let docs = dir.path().join("docs");
+        let outside = dir.path().join("outside");
+        fs::create_dir(&docs).unwrap();
+        fs::create_dir(&outside).unwrap();
+        let path = docs.join("reading.md");
+        fs::write(&path, "![image](private.png)").unwrap();
+        fs::write(outside.join("private.png"), b"private").unwrap();
+        let loaded = super::load(&path, "1".into()).unwrap();
+        fs::rename(&docs, dir.path().join("original")).unwrap();
+        std::os::unix::fs::symlink(&outside, &docs).unwrap();
+        assert!(loaded.images.resolve(0).is_err());
+    }
+
+    #[test]
+    fn text_loading_does_not_read_or_stat_local_images() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("reading.md");
+        fs::write(&path, "# Texto primero\n\n![Café](imagen%20%C3%B1.png)").unwrap();
+        // Create the image only after load returns. Its bytes cannot have been
+        // read or its absence rejected while preparing the initial HTML.
+        let loaded = super::load(&path, "42".into()).unwrap();
+        assert!(loaded.document.html.contains("<h1>Texto primero</h1>"));
+        assert!(loaded.document.html.contains("#local-image-42-0"));
+        assert!(loaded.document.html.contains("alt=\"Café\""));
+        assert!(!loaded.document.html.contains("data:image/"));
+        fs::write(dir.path().join("imagen ñ.png"), b"deferred").unwrap();
+        assert_eq!(
+            loaded.images.resolve(0).unwrap(),
+            format!("data:image/png;base64,{}", STANDARD.encode(b"deferred"))
+        );
+        assert!(loaded.images.resolve(0).is_err());
+        assert!(loaded.images.resolve(1).is_err());
+    }
+
+    #[test]
+    fn deferred_images_enforce_paths_formats_and_isolated_failures() {
+        let dir = tempdir().unwrap();
+        let docs = dir.path().join("docs");
+        fs::create_dir(&docs).unwrap();
+        fs::write(dir.path().join("outside.png"), b"private").unwrap();
+        fs::write(docs.join("secret.txt"), b"private").unwrap();
+        fs::write(docs.join("valid.png"), b"image").unwrap();
+        let path = docs.join("reading.md");
+        fs::write(&path, "![escape](../outside.png)\n![missing](missing.png)\n![type](secret.txt)\n![valid](valid.png)\n![absolute](/outside.png)\n![file](file:///etc/passwd)\n![windows](C:/outside.png)\n![http](http://example.com/a.png)\n![https](https://example.com/a.png)").unwrap();
+        let loaded = super::load(&path, "1".into()).unwrap();
+        assert_eq!(loaded.images.sources.len(), 4);
+        for index in 0..3 {
+            assert!(loaded.images.resolve(index).is_err());
+        }
+        assert!(loaded.images.resolve(3).is_ok());
+        assert!(loaded.document.html.contains("https://example.com/a.png"));
+        assert!(!loaded.document.html.contains("file:"));
+        assert!(!loaded.document.html.contains("C:/"));
+        assert!(!loaded.document.html.contains("http://example.com"));
+        let mut remaining = MAX_TOTAL_IMAGE_BYTES;
+        for source in [
+            "/outside.png",
+            "\\outside.png",
+            "C:/outside.png",
+            "file:///etc/passwd",
+        ] {
+            assert!(image_source(source, &docs, &mut remaining).is_none());
+        }
+    }
+
+    #[test]
+    fn concurrent_images_share_the_budget_and_oversized_images_do_not_consume_it() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("reading.md");
+        File::create(dir.path().join("large.png"))
+            .unwrap()
+            .set_len(MAX_IMAGE_BYTES + 1)
+            .unwrap();
+        for index in 0..5 {
+            File::create(dir.path().join(format!("{index}.png")))
+                .unwrap()
+                .set_len(MAX_IMAGE_BYTES)
+                .unwrap();
+        }
+        fs::write(dir.path().join("empty.png"), b"").unwrap();
+        fs::write(&path, "![large](large.png)\n![0](0.png)\n![1](1.png)\n![2](2.png)\n![3](3.png)\n![4](4.png)\n![empty](empty.png)").unwrap();
+        let images = Arc::new(super::load(&path, "1".into()).unwrap().images);
+        assert!(images.resolve(0).is_err());
+        assert_eq!(images.budget.lock().unwrap().0, MAX_TOTAL_IMAGE_BYTES);
+        let threads: Vec<_> = (1..=5)
+            .map(|index| {
+                let images = images.clone();
+                std::thread::spawn(move || images.resolve(index).is_ok())
+            })
+            .collect();
+        let successes = threads
+            .into_iter()
+            .map(|thread| thread.join().unwrap())
+            .filter(|success| *success)
+            .count();
+        assert_eq!(successes, 4);
+        assert_eq!(images.budget.lock().unwrap().0, 0);
+        assert!(images.resolve(6).is_ok());
+    }
+
+    #[test]
+    fn obsolete_loads_and_image_references_cannot_replace_the_current_opening() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("reading.md");
+        fs::write(&path, "![image](image.png)").unwrap();
+        fs::write(dir.path().join("image.png"), b"image").unwrap();
+        let mut store = ImageStore::default();
+        let first = store.begin();
+        store.publish(super::load(&path, first.clone()).unwrap());
+        store.activate(&first).unwrap();
+        let old = store.get(&first).unwrap();
+        let second = store.begin();
+        let second_load = super::load(&path, second.clone()).unwrap();
+        let third = store.begin();
+        store.publish(super::load(&path, third.clone()).unwrap());
+        store.publish(second_load);
+        // Publishing a response is not evidence the UI accepted it.
+        assert!(store.get(&first).is_ok());
+        assert!(store.get(&third).is_err());
+        assert!(store.activate(&second).is_err());
+        store.activate(&third).unwrap();
+        assert!(store.get(&second).is_err());
+        assert!(store.get(&first).is_err());
+        assert!(store.get("arbitrary/path.png").is_err());
+        assert!(old.resolve(0).is_err());
+        assert!(store.get(&third).unwrap().resolve(0).is_ok());
+        // A failed opening leaves the visible document's remaining images valid.
+        store.begin();
+        assert!(store.get(&third).is_ok());
+    }
+
+    #[test]
+    fn a_discarded_response_keeps_the_visible_documents_images_active() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("reading.md");
+        fs::write(&path, "![image](image.png)").unwrap();
+        fs::write(dir.path().join("image.png"), b"image").unwrap();
+        let mut store = ImageStore::default();
+        let visible = store.begin();
+        store.publish(super::load(&path, visible.clone()).unwrap());
+        store.activate(&visible).unwrap();
+        let discarded = store.begin();
+        store.publish(super::load(&path, discarded.clone()).unwrap());
+        assert!(store.get(&discarded).is_err());
+        assert!(store.get(&visible).unwrap().resolve(0).is_ok());
     }
 }

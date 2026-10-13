@@ -1,4 +1,5 @@
 import { MermaidController } from './mermaid';
+import { LocalImageController } from './local-images';
 
 /* Document HTML is sanitized in Rust; generated SVG is sanitized separately. */
 const { invoke } = window.__TAURI__.core;
@@ -21,7 +22,8 @@ const filename = requireElement('#filename', HTMLElement);
 const fileDetail = requireElement('#file-detail', HTMLElement);
 const modifier = requireElement('#modifier', HTMLElement);
 const diagrams = new MermaidController(article);
-window.addEventListener('pagehide', () => diagrams.dispose());
+const images = new LocalImageController(article, reader);
+window.addEventListener('pagehide', () => { diagrams.dispose(); images.dispose(); });
 let requestId = 0;
 let choosing = false;
 
@@ -45,14 +47,6 @@ function prepareDocument(): void {
     input.type = 'checkbox';
     input.disabled = true;
   });
-  article.querySelectorAll('img').forEach((image) => {
-    image.loading = 'lazy';
-    image.decoding = 'async';
-    const source = image.getAttribute('src') || '';
-    if (!source.startsWith('https://') && !/^data:image\/(png|jpeg|gif|webp|avif|svg\+xml);base64,/.test(source)) {
-      image.removeAttribute('src');
-    }
-  });
 }
 
 async function openDocument(operation: () => Promise<RenderedDocument | null>): Promise<void> {
@@ -67,7 +61,9 @@ async function openDocument(operation: () => Promise<RenderedDocument | null>): 
       return;
     }
     article.innerHTML = doc.html;
+    delete article.dataset.readyMs;
     prepareDocument();
+    const loadImages = images.prepare(doc.id);
     const renderDiagrams = diagrams.prepare();
     article.hidden = false;
     empty.hidden = true;
@@ -80,11 +76,13 @@ async function openDocument(operation: () => Promise<RenderedDocument | null>): 
     // The second animation frame runs after the browser had an opportunity to
     // paint the new document. Images do not delay the text-ready measurement.
     requestAnimationFrame(() => requestAnimationFrame(async () => {
-      // A canceled/failed opening keeps this visible document's diagrams alive.
+      const paint = id === requestId ? invoke('content_painted', { hasDocument: true }) : null;
+      // A canceled/failed opening keeps this visible document's resources alive.
+      loadImages();
       renderDiagrams();
-      if (id !== requestId) return;
+      if (!paint) return;
       try {
-        const elapsed = await invoke('content_painted', { hasDocument: true });
+        const elapsed = await paint;
         if (id !== requestId) return;
         article.dataset.readyMs = elapsed.toFixed(2);
       } catch (message) {

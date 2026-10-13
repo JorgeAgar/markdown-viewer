@@ -14,6 +14,7 @@ interface CommandCall<K extends keyof ViewerCommands = keyof ViewerCommands> {
 }
 
 class TauriController {
+  holdActivation = false;
   readonly pending: CommandCall[] = [];
   readonly calls: { command: keyof ViewerCommands; args: unknown }[] = [];
   readonly listeners = new Map<keyof ViewerEvents, (payload: unknown) => void>();
@@ -27,6 +28,10 @@ class TauriController {
         const { promise, resolve, reject } = Promise.withResolvers<ViewerCommands[K]['result']>();
         const call = { command, args: args[0], resolve, reject };
         this.calls.push(call);
+        if (command === 'activate_document_images' && !this.holdActivation) {
+          resolve(null as ViewerCommands[K]['result']);
+          return promise;
+        }
         // The queue erases the command parameter; take() restores it only after
         // checking the command name. Test callers retain correlated IPC types.
         this.pending.push(call as CommandCall);
@@ -62,7 +67,7 @@ async function settle(): Promise<void> {
 }
 
 function rendered(name: string): RenderedDocument {
-  return { name, path: `/documents/${name}`, html: `<h1 id="${name}">${name}</h1><p>Contents of ${name}</p>`, bytes: 2048 };
+  return { id: name, name, path: `/documents/${name}`, html: `<h1 id="${name}">${name}</h1><p>Contents of ${name}</p>`, bytes: 2048 };
 }
 
 async function createViewer(t: TestContext, finishStartup = true) {
@@ -244,6 +249,171 @@ for (const outcome of ['cancel', 'error'] as const) {
     assert.equal(viewer.element('status').textContent, outcome === 'cancel' ? 'Listo para leer' : 'No se pudo abrir el archivo');
     assert.equal(viewer.element('error').hidden, outcome === 'cancel');
     viewer.assertButtons(false);
+  });
+}
+
+function illustrated(id: string, count = 1): RenderedDocument {
+  return {
+    ...rendered(`images-${id}.md`), id,
+    html: `<h1>Texto primero</h1><p>Lectura disponible</p>${Array.from({ length: count }, (_, index) =>
+      `<img src="#local-image-${id}-${index}" alt="Imagen ${index}" width="160" height="90">`).join('')}`,
+  };
+}
+
+const imageData = 'data:image/png;base64,aW1hZ2U=';
+
+test('text paint and its measurement complete while controlled image reads remain pending', async t => {
+  const viewer = await createViewer(t);
+  await viewer.load(illustrated('1', 3));
+  assert.equal(viewer.element('document').querySelector('h1')?.textContent, 'Texto primero');
+  assert.equal(viewer.element('document').hidden, false);
+  assert.equal(viewer.tauri.calls.some(call => call.command === 'resolve_document_image'), false);
+  const placeholder = viewer.element('document').querySelector<HTMLElement>('.local-image-placeholder')!;
+  assert.equal(placeholder.textContent, 'Imagen 0');
+  assert.equal(placeholder.style.width, '160px');
+  assert.equal(placeholder.style.height, '90px');
+  await viewer.paint();
+  const first = viewer.tauri.take('resolve_document_image');
+  const second = viewer.tauri.take('resolve_document_image');
+  assert.equal(first.args.documentId, '1');
+  assert.equal(first.args.imageId, 0);
+  viewer.tauri.take('content_painted').resolve(18);
+  await settle();
+  assert.equal(viewer.element('document').dataset.readyMs, '18.00');
+  assert.equal(viewer.element('document').dataset.imagesResolvedMs, undefined);
+  assert.equal(viewer.element('document').querySelectorAll('img').length, 0);
+  // Interaction remains available while Rust has not completed either read.
+  const reader = viewer.element('reader');
+  reader.scrollTop = 120;
+  first.resolve(imageData);
+  await settle();
+  assert.equal(viewer.element('document').querySelectorAll('img').length, 1);
+  assert.equal(reader.scrollTop, 120);
+  const third = viewer.tauri.take('resolve_document_image');
+  assert.equal(third.args.imageId, 2);
+  second.reject('Missing or oversized image');
+  third.resolve(imageData);
+  await settle();
+  assert.equal(viewer.element('document').querySelectorAll('img').length, 2);
+  assert.equal(viewer.element('document').querySelector('.local-image-placeholder')?.textContent, 'Imagen 1');
+  assert.ok(viewer.element('document').dataset.imagesResolvedMs);
+  assert.equal(viewer.element('error').hidden, true);
+});
+
+test('visible local images are requested before images outside the reader viewport', async t => {
+  const viewer = await createViewer(t);
+  await viewer.load(illustrated('2', 3));
+  const bounds = (top: number, bottom: number) => ({ top, bottom, left: 0, right: 100, width: 100, height: bottom - top, x: 0, y: top, toJSON: () => ({}) });
+  viewer.element('reader').getBoundingClientRect = () => bounds(0, 100);
+  viewer.element('document').querySelectorAll<HTMLElement>('.local-image-placeholder').forEach((element, index) => {
+    element.getBoundingClientRect = () => index === 2 ? bounds(20, 40) : bounds(200, 220);
+  });
+  await viewer.paint();
+  viewer.tauri.take('content_painted').resolve(20);
+  const visible = viewer.tauri.take('resolve_document_image');
+  const offscreen = viewer.tauri.take('resolve_document_image');
+  assert.equal(visible.args.imageId, 2);
+  visible.resolve(imageData);
+  offscreen.resolve(imageData);
+  await settle();
+  viewer.tauri.take('resolve_document_image').resolve(imageData);
+  await settle();
+});
+
+test('changing documents discards old image responses and queued reads, with a global concurrency limit', async t => {
+  const viewer = await createViewer(t);
+  await viewer.load(illustrated('3', 3));
+  await viewer.paint();
+  viewer.tauri.take('content_painted').resolve(20);
+  const oldFirst = viewer.tauri.take('resolve_document_image');
+  const oldSecond = viewer.tauri.take('resolve_document_image');
+  await viewer.load(illustrated('4', 2));
+  await viewer.paint();
+  viewer.tauri.take('content_painted').resolve(30);
+  assert.equal(viewer.tauri.pending.length, 0, 'New reads wait for old reads to release the two slots');
+  oldFirst.resolve(imageData);
+  oldSecond.reject('Obsolete error');
+  await settle();
+  assert.equal(viewer.element('document').querySelectorAll('img').length, 0);
+  assert.equal(viewer.tauri.calls.filter(call => call.command === 'resolve_document_image').length, 4);
+  const newFirst = viewer.tauri.take('resolve_document_image');
+  const newSecond = viewer.tauri.take('resolve_document_image');
+  assert.equal(newFirst.args.documentId, '4');
+  assert.equal(newSecond.args.documentId, '4');
+  newFirst.resolve(imageData);
+  newSecond.resolve(imageData);
+  await settle();
+  assert.equal(viewer.element('document').querySelectorAll('img').length, 2);
+  assert.equal(viewer.element('document').dataset.readyMs, '30.00');
+  assert.equal(viewer.element('error').hidden, true);
+});
+
+for (const outcome of ['cancel', 'error'] as const) {
+  test(`local image loading survives a picker ${outcome} before paint`, async t => {
+    const viewer = await createViewer(t);
+    await viewer.load(illustrated('5'));
+    viewer.element<HTMLButtonElement>('open').click();
+    const picker = viewer.tauri.take('choose_document');
+    if (outcome === 'cancel') picker.resolve(null);
+    else picker.reject('Picker failed');
+    await settle();
+    await viewer.paint();
+    viewer.tauri.take('resolve_document_image').resolve(imageData);
+    await settle();
+    assert.equal(viewer.element('document').querySelector('img')?.alt, 'Imagen 0');
+    assert.equal(viewer.tauri.calls.some(call => call.command === 'content_painted'), false);
+  });
+}
+
+test('invalid image data and decoding failures preserve alt text and isolate errors', async t => {
+  const viewer = await createViewer(t);
+  await viewer.load(illustrated('6', 2));
+  await viewer.paint();
+  viewer.tauri.take('content_painted').resolve(20);
+  viewer.tauri.take('resolve_document_image').resolve('file:///etc/passwd');
+  viewer.tauri.take('resolve_document_image').resolve(imageData);
+  await settle();
+  const image = viewer.element('document').querySelector('img')!;
+  image.dispatchEvent(new viewer.window.Event('error'));
+  assert.deepEqual([...viewer.element('document').querySelectorAll('.local-image-placeholder')].map(el => el.textContent), ['Imagen 0', 'Imagen 1']);
+  assert.equal(viewer.element('error').hidden, true);
+  assert.equal(viewer.element('document').querySelector('h1')?.textContent, 'Texto primero');
+});
+
+test('an old document replaced before paint never requests local images', async t => {
+  const viewer = await createViewer(t);
+  await viewer.load(illustrated('7'));
+  await viewer.load(rendered('text.md'));
+  await viewer.paint();
+  viewer.tauri.take('content_painted').resolve(20);
+  assert.equal(viewer.tauri.calls.some(call => call.command === 'resolve_document_image'), false);
+  await settle();
+});
+
+for (const outcome of ['success', 'error'] as const) {
+  test(`text paint does not wait for image activation ${outcome}`, async t => {
+    const viewer = await createViewer(t);
+    viewer.tauri.holdActivation = true;
+    await viewer.load(illustrated('8'));
+    const activation = viewer.tauri.take('activate_document_images');
+    assert.equal(activation.args.documentId, '8');
+    await viewer.paint();
+    viewer.tauri.take('content_painted').resolve(15);
+    await settle();
+    assert.equal(viewer.element('document').dataset.readyMs, '15.00');
+    assert.equal(viewer.tauri.calls.some(call => call.command === 'resolve_document_image'), false);
+    if (outcome === 'success') {
+      activation.resolve(null);
+      await settle();
+      viewer.tauri.take('resolve_document_image').resolve(imageData);
+      await settle();
+      assert.equal(viewer.element('document').querySelector('img')?.alt, 'Imagen 0');
+    } else {
+      activation.reject('Obsolete opening');
+      await settle();
+      assert.equal(viewer.element('document').querySelector('.local-image-placeholder')?.textContent, 'Imagen 0');
+      assert.equal(viewer.element('error').hidden, true);
+    }
   });
 }
 

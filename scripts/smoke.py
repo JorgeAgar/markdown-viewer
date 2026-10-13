@@ -111,6 +111,45 @@ with tempfile.TemporaryDirectory(prefix="markdown-viewer-smoke-") as temporary:
         """)
         print("PASS: OS opener refuses local file URLs")
 
+        deferred = Path(temporary) / "imágenes diferidas.md"
+        deferred.write_text("# Texto primero\n\nLectura disponible.\n\n![Café](imagen%20%C3%B1.svg)\n\n![Ausente](missing.png)\n\n![Grande](large.png)", encoding="utf-8")
+        with (Path(temporary) / "large.png").open("wb") as image:
+            image.truncate(8 * 1024 * 1024 + 1)
+        execute("""
+            const originalCore = window.__TAURI__.core;
+            window.pendingImageReads = [];
+            // Tauri freezes the core module, but the containing namespace can
+            // replace it with a controlled copy for this test.
+            window.__TAURI__.core = { ...originalCore, invoke: (command, args) => {
+                if (command !== 'resolve_document_image') return originalCore.invoke(command, args);
+                return new Promise((resolve, reject) => window.pendingImageReads.push(() =>
+                    originalCore.invoke(command, args).then(resolve, reject)));
+            }};
+            window.releaseImageReads = () => {
+                window.__TAURI__.core = originalCore;
+                window.pendingImageReads.splice(0).forEach(read => read());
+            };
+        """)
+        subprocess.run([str(BINARY), str(deferred)], check=True, timeout=10)
+        wait_for(lambda: execute("return document.querySelector('#filename').textContent === 'imágenes diferidas.md' && window.pendingImageReads.length === 2"))
+        wait_for(lambda: execute("return document.querySelector('#document').dataset.readyMs"))
+        assert execute("return document.querySelector('#document h1').textContent") == "Texto primero"
+        assert execute("return document.querySelector('#document').dataset.imagesResolvedMs === undefined")
+        assert execute("return document.querySelectorAll('.local-image-placeholder').length") == 3
+        assert execute("return document.querySelector('#document').textContent.includes('Café')")
+        # The file does not even exist until the text has painted. Rust must
+        # validate and read it at resolution time, rather than during load().
+        (Path(temporary) / "imagen ñ.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="24"><rect width="32" height="24" fill="green"/></svg>', encoding="utf-8")
+        execute("""
+            window.releaseImageReads();
+            delete window.releaseImageReads;
+        """)
+        wait_for(lambda: execute("return document.querySelector('#document').dataset.imagesResolvedMs"))
+        wait_for(lambda: execute("return document.querySelector('#document img')?.naturalWidth === 32"))
+        assert execute("return [...document.querySelectorAll('.local-image-placeholder')].map(el => el.textContent)") == ["Ausente", "Grande"]
+        assert execute("return document.querySelector('#error').hidden")
+        print("PASS: text paints before controlled local reads; later Unicode image loads; missing and oversized images keep alt text")
+
         execute("""
             window.mermaidCspViolations = [];
             document.addEventListener('securitypolicyviolation', event => {

@@ -118,7 +118,16 @@ pnpm benchmark examples/bienvenido.md 5
 
 La medición comienza al entrar en `main` y termina tras dos llamadas a `requestAnimationFrame` después de insertar el documento. Es una aproximación al primer pintado del texto; no es una medición del compositor ni incluye la carga de todas las imágenes. El script también informa el tiempo desde la creación del proceso hasta su salida.
 
-No se muestra una ventana de carga ni se espera por recursos de red para mostrar el texto. Las imágenes se cargan con `loading="lazy"`. Las imágenes locales se leen al convertir el documento, por lo que su tamaño sí afecta a la apertura. Mermaid empieza después de la oportunidad de primer pintado del texto. `data-diagrams-ready-ms` registra aparte el tiempo del lote de diagramas, incluida la carga inicial de la biblioteca.
+No se muestra una ventana de carga ni se espera por recursos de red para mostrar el texto. Las imágenes HTTPS se cargan con `loading="lazy"`. Las imágenes Markdown locales se devuelven como referencias de la apertura y se solicitan después del primer pintado, con hasta dos solicitudes pendientes y prioridad para las visibles. Rust valida y lee cada imagen entonces, sin retrasar la devolución del texto. Mermaid empieza después de la oportunidad de primer pintado del texto. `data-diagrams-ready-ms` registra aparte el tiempo del lote de diagramas, incluida la carga inicial de la biblioteca.
+
+Para medir un documento con 32 MiB de imágenes locales, genera una muestra sin añadir archivos grandes al repositorio:
+
+```sh
+python3 scripts/image-fixture.py
+pnpm benchmark 'artifacts/local-image-benchmark/lectura con imágenes.md' 5
+```
+
+`data-images-resolved-ms` mide por separado el tiempo desde el inicio de la cola de imágenes hasta completar las lecturas y la codificación. No incluye la decodificación o el pintado de las imágenes en el WebView. Los detalles y los resultados de Linux están en [Imágenes locales](docs/imagenes-locales.md).
 
 La primera ejecución del script no garantiza cachés frías. Para comparar equipos, mide también después de reiniciar, usa el mismo archivo y registra sistema, CPU y tamaño del documento. En Linux sin pantalla puedes usar `xvfb-run -a dbus-run-session -- pnpm run benchmark`, pero esos resultados no representan una sesión de escritorio real.
 

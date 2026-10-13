@@ -6,12 +6,13 @@ Es la tercera pieza de [la arquitectura](arquitectura.md) y está en [`src-tauri
 
 ## 1. Qué recibe y qué devuelve
 
-La función pública `load` recibe una ruta. La [coordinación en Rust](coordinacion-rust.md) la llama desde una tarea de trabajo y devuelve el resultado a JavaScript.
+La función pública `load` recibe una ruta y un identificador de apertura. La [coordinación en Rust](coordinacion-rust.md) la llama desde una tarea de trabajo y devuelve el resultado a JavaScript.
 
-Si todo funciona, `load` entrega un `Document`:
+Si todo funciona, `load` entrega un `LoadedDocument` con las referencias locales privadas y un `Document` que se envía a JavaScript:
 
 | Campo | Contenido |
 | --- | --- |
+| `id` | Identificador de la apertura, usado para solicitar sus imágenes. |
 | `path` | Ruta completa después de resolver la ubicación real del archivo. |
 | `name` | Nombre del archivo, como `lectura.md`. |
 | `html` | HTML convertido y limpiado, listo para la interfaz. |
@@ -26,7 +27,7 @@ flowchart TD
     Real --> Lectura["Lee con un límite de tamaño"]
     Lectura --> Texto["Comprueba UTF-8 y retira el BOM inicial"]
     Texto --> Render["Convierte y limpia el contenido"]
-    Render --> Documento["Document: path, name, html y bytes"]
+    Render --> Documento["Document: id, path, name, html y bytes"]
 ```
 
 Cada paso prepara el siguiente. El renderizador solo recibe texto después de que la lectura y la comprobación de codificación hayan terminado correctamente.
@@ -47,7 +48,7 @@ Esta pieza lee el archivo completo dentro del límite. No hay lectura por págin
 
 `render` crea un parser de `pulldown-cmark`. Un parser interpreta la sintaxis del texto y reconoce elementos como encabezados, párrafos, enlaces o imágenes.
 
-El parser produce eventos a medida que recorre el documento. Por ejemplo, un encabezado produce un evento de inicio, su texto y un evento de cierre. Nuestro código conserva los eventos y modifica los de inicio de imagen para resolver su origen.
+El parser produce eventos a medida que recorre el documento. Por ejemplo, un encabezado produce un evento de inicio, su texto y un evento de cierre. Nuestro código conserva los eventos y modifica los de inicio de imagen para registrar su referencia, sin acceder a los archivos de imagen.
 
 ```mermaid
 flowchart LR
@@ -67,7 +68,7 @@ Rust conserva Mermaid como código escapado con la clase `language-mermaid`. La 
 
 ## 4. Cómo encuentra las imágenes
 
-Para una imagen Markdown como `![Portada](imagenes/portada.png)`, `image_source` recibe el origen y la carpeta del documento.
+Para una imagen Markdown como `![Portada](imagenes/portada.png)`, `render` guarda el origen en una lista privada y devuelve un marcador. Después del pintado, `resolve_document_image` recibe el identificador de apertura y el índice de esa lista. `image_source` valida el origen y la carpeta canónica del documento antes de leer el archivo.
 
 ```mermaid
 flowchart TD
@@ -100,15 +101,15 @@ Se admiten PNG, JPEG, GIF, WebP, AVIF y SVG. El tipo se elige por la extensión;
 
 Cada imagen local puede ocupar hasta 8 MiB y el conjunto hasta 32 MiB. El presupuesto cuenta los bytes leídos antes de convertirlos a Base64. Una imagen repetida se procesa en cada aparición y vuelve a consumir presupuesto; actualmente no hay caché de imágenes.
 
-## 5. Por qué incluye imágenes locales en el HTML
+## 5. Cómo entrega las imágenes después del texto
 
-Base64 convierte los bytes de una imagen en texto que puede incluirse en una dirección `data:image/...;base64,...`. El WebView recibe la imagen junto al HTML y puede mostrarla sin leer su ruta del disco.
+Base64 convierte los bytes de una imagen en texto que puede incluirse en una dirección `data:image/...;base64,...`. El WebView recibe esos datos como respuesta a una solicitud posterior al primer pintado y puede mostrar la imagen sin leer su ruta del disco.
 
-Eso aumenta el tamaño del HTML y el trabajo previo a mostrarlo. Los límites de imágenes se aplican a los bytes originales; la representación Base64 ocupa más espacio.
+Eso aumenta el tamaño de las respuestas de imágenes, pero el HTML inicial contiene solo marcadores. Los límites de imágenes se aplican a los bytes originales; la representación Base64 ocupa más espacio.
 
-Las imágenes HTTPS no consumen ese presupuesto local y Rust no las descarga. Por eso el texto puede mostrarse antes de que lleguen las imágenes remotas. Las imágenes locales sí afectan al tiempo de conversión.
+Las imágenes HTTPS no consumen ese presupuesto local y Rust no las descarga. Por eso el texto puede mostrarse antes de que lleguen las imágenes remotas. Las imágenes locales también se leen después de mostrar el texto. Un bloqueo por documento comparte el presupuesto entre solicitudes concurrentes. Al reemplazar el documento, se invalidan las referencias anteriores y la interfaz descarta sus respuestas tardías.
 
-Si una imagen no existe o no cumple las reglas, `image_source` devuelve ningún origen y el renderizador sustituye su destino por una cadena vacía. La carga del Markdown continúa; no aparece un error global por esa imagen.
+Si una imagen no existe o no cumple las reglas, la solicitud devuelve un error y la interfaz conserva su texto alternativo. La carga del Markdown continúa; no aparece un error global por esa imagen.
 
 ## 6. Qué elimina la limpieza de HTML
 
@@ -118,7 +119,7 @@ Los scripts y atributos activos como `onerror` se eliminan. Los esquemas de URL 
 
 Estas reglas se complementan con otras piezas. La [interfaz](interfaz.md) revisa que las imágenes tengan HTTPS o datos Base64 de un formato admitido. La coordinación solo abre enlaces web y de correo. La CSP de Tauri limita lo que el WebView puede cargar o ejecutar.
 
-Las imágenes Markdown relativas funcionan porque se convierten en datos antes de la limpieza. Una imagen escrita como HTML crudo, por ejemplo `<img src="imagenes/portada.png">`, no pasa por ese tratamiento y pierde la dirección relativa. Los enlaces como `[Otro](otro.md)` también pierden su destino relativo; `[Sección](#seccion)` se conserva.
+Las imágenes Markdown relativas conservan marcadores de fragmento durante la limpieza; sus datos se obtienen después mediante el comando de resolución. Una imagen escrita como HTML crudo, por ejemplo `<img src="imagenes/portada.png">`, no pasa por ese tratamiento y pierde la dirección relativa. Los enlaces como `[Otro](otro.md)` también pierden su destino relativo; `[Sección](#seccion)` se conserva.
 
 ## 7. Cómo leer los errores
 

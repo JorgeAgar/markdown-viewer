@@ -1,6 +1,7 @@
 // Generated from Rust by pnpm generate:ipc. Do not edit.
 // Checked by pnpm check:ipc; this is not runtime payload validation.
 interface RenderedDocument {
+  id: string;
   path: string;
   name: string;
   html: string;
@@ -11,6 +12,8 @@ interface ViewerCommands {
   take_pending_document: { args: undefined; result: RenderedDocument | null };
   open_document: { args: { path: string }; result: RenderedDocument };
   choose_document: { args: undefined; result: RenderedDocument | null };
+  activate_document_images: { args: { documentId: string }; result: null };
+  resolve_document_image: { args: { documentId: string; imageId: number }; result: string };
   open_link: { args: { href: string }; result: null };
   content_painted: { args: { hasDocument: boolean }; result: number };
 }
