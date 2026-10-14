@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       linux_only:
-        description: 'Run only Linux build and native WebView validation'
+        description: 'Run only Ubuntu and Arch Linux builds and validation'
         type: boolean
         default: false
 
@@ -67,3 +67,65 @@ jobs:
         with:
           name: linux-validation
           path: artifacts/
+
+  build-arch:
+    runs-on: ubuntu-22.04
+    container:
+      image: archlinux:base-devel
+      # Let WebKit create its sandbox namespaces inside Docker.
+      options: --security-opt seccomp=unconfined
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Arch dependencies
+        run: |
+          pacman -Syu --noconfirm --needed git curl wget file webkit2gtk-4.1 \
+            libappindicator-gtk3 librsvg dbus xorg-server-xvfb xorg-xauth ttf-dejavu
+          useradd --create-home arch-test
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.4.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: arch-x86_64
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm test
+      - run: pnpm build:arch
+      - name: Validate extracted Arch package and measure startup
+        env:
+          WEBKIT_DISABLE_DMABUF_RENDERER: '1'
+        run: |
+          mkdir -p artifacts/arch-extracted
+          tar -xzf artifacts/packages/*.tar.gz -C artifacts/arch-extracted
+          binary=$(find "$PWD/artifacts/arch-extracted" -type f -name markdown-viewer)
+          test -x "$binary"
+          ldd "$binary" | tee artifacts/arch-ldd.txt
+          if grep -q 'not found' artifacts/arch-ldd.txt; then exit 1; fi
+          # Run the WebView as a regular user so its sandbox can stay enabled.
+          chown -R arch-test:arch-test artifacts
+          runuser -u arch-test -- env MD_VIEWER_BINARY="$binary" \
+            xvfb-run -a dbus-run-session -- node scripts/benchmark.mjs \
+            examples/bienvenido.md 5 > artifacts/benchmark.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: markdown-viewer-Arch-x86_64
+          path: artifacts/packages/*.tar.gz
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: arch-validation
+          path: |
+            artifacts/arch-ldd.txt
+            artifacts/benchmark.txt
