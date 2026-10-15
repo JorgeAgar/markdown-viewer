@@ -62,7 +62,7 @@ sequenceDiagram
 
 Rust realiza la lectura y conversión en una tarea de trabajo separada mediante `spawn_blocking`, para que ese trabajo no ocupe la tarea que atiende la petición.
 
-La interfaz recibe cuatro datos: `html`, `name`, `path` y `bytes`. Inserta el HTML, muestra el nombre y tamaño del archivo y vuelve al inicio del documento. Después prepara los enlaces internos, las casillas de tareas y las imágenes.
+La interfaz recibe `html`, `name`, `path`, `bytes` e `id`, que identifica la apertura para las imágenes locales. Inserta el HTML, muestra el nombre y tamaño del archivo y vuelve al inicio del documento. Después prepara los enlaces internos, las casillas de tareas y las imágenes.
 
 Si cancelas el selector, el documento actual sigue abierto. Si falla la carga, aparece un error y puedes seguir leyendo el documento anterior. Si haces varias peticiones seguidas, la interfaz usa un contador para descartar resultados anteriores que lleguen tarde.
 
@@ -74,7 +74,7 @@ Hay dos trabajos distintos: interpretar el Markdown y mostrar el HTML resultante
 flowchart TD
     Archivo["Archivo Markdown"] --> Validacion["Comprueba extensión, tamaño y UTF-8"]
     Validacion --> Parser["pulldown-cmark interpreta el Markdown"]
-    Parser --> Imagenes["Resuelve imágenes Markdown relativas"]
+    Parser --> Imagenes["Registra referencias de imágenes Markdown locales"]
     Imagenes --> HTML["Genera HTML"]
     HTML --> Limpieza["ammonia limpia el HTML"]
     Limpieza --> Interfaz["JavaScript prepara el documento"]
@@ -83,7 +83,7 @@ flowchart TD
 
 `pulldown-cmark` reconoce la estructura del documento, como encabezados, párrafos, listas y bloques de código. También activamos tablas, tareas, texto tachado y notas al pie.
 
-Durante ese procesamiento, Rust resuelve las imágenes Markdown locales y las incluye en el HTML como datos Base64. Así, el WebView puede mostrarlas sin recibir acceso general al sistema de archivos. Las imágenes remotas con HTTPS conservan su dirección y el WebView las descarga.
+Durante ese procesamiento, Rust registra las imágenes Markdown locales y devuelve marcadores ligados al identificador de la apertura. Después del primer pintado, la interfaz solicita cada imagen y Rust valida la ruta, lee los bytes y devuelve datos Base64. Así, el WebView puede mostrarlas sin recibir acceso general al sistema de archivos. Las imágenes remotas con HTTPS conservan su dirección y el WebView las descarga.
 
 `ammonia` elimina elementos y atributos peligrosos, como scripts y manejadores de eventos. El visor muestra el HTML permitido con nuestro CSS, que sigue el tema claro u oscuro del sistema.
 
@@ -124,7 +124,7 @@ Las imágenes relativas escritas como HTML crudo no siguen el tratamiento de las
 
 La interfaz usa archivos estáticos sin frameworks. Rust convierte el documento dentro de la app y Tauri utiliza el WebView del sistema. Las bibliotecas de Mermaid y limpieza se cargan solo si hay un bloque admitido.
 
-El texto no espera a que se descarguen imágenes remotas. Las imágenes usan carga diferida con `loading="lazy"`. Las imágenes locales sí se leen durante la conversión, por lo que un documento con muchas imágenes puede tardar más.
+El texto no espera a las imágenes locales ni a que se descarguen las remotas. Las imágenes HTTPS usan `loading="lazy"`. La cola local empieza después del primer pintado, prioriza las imágenes visibles y limita las solicitudes pendientes. Consulta [Imágenes locales](imagenes-locales.md) para su validación y medición.
 
 [`scripts/benchmark.mjs`](../scripts/benchmark.mjs) mide la apertura del ejecutable optimizado. El tiempo empieza al entrar en `main` y termina después de dos llamadas a `requestAnimationFrame` tras insertar el documento. Esto aproxima el momento en que el texto puede verse; no mide el pintado físico de la pantalla ni la carga completa de imágenes.
 

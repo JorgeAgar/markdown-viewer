@@ -38,7 +38,7 @@ El estado `Viewer` tiene estos datos:
 
 `pending` está protegido por un `Mutex`, que permite modificarlo desde distintos manejadores sin acceder a la vez. `measured` usa un valor atómico, que puede consultarse y cambiarse de forma segura en una sola operación.
 
-Este estado no guarda el HTML del documento abierto. Ese contenido queda en la [interfaz](interfaz.md). Tampoco guarda un historial en disco.
+El estado guarda también un `ImageStore` con la carpeta canónica, las referencias de imágenes y el presupuesto de la apertura vigente. No guarda el HTML del documento abierto. Ese contenido queda en la [interfaz](interfaz.md). Tampoco guarda un historial en disco.
 
 ## 3. Los comandos disponibles
 
@@ -49,6 +49,8 @@ JavaScript llama a estas funciones mediante `invoke`. Tauri transporta los argum
 | `open_document` | Una ruta. | Un documento o un error. |
 | `choose_document` | Sin argumentos propios. | Un documento, ningún documento si se cancela, o un error. |
 | `take_pending_document` | Sin argumentos propios. | Carga la ruta pendiente; si no hay ruta, devuelve ningún documento. |
+| `activate_document_images` | Identificador de la apertura aceptada por la interfaz. | Activa sus referencias e invalida las anteriores, o devuelve un error. |
+| `resolve_document_image` | Identificador de apertura e índice de imagen. | Datos Base64 o un error de esa imagen. |
 | `open_link` | Una dirección `href`. | Confirma que pudo pedir al sistema abrirla, o devuelve un error. |
 | `content_painted` | Si se mostró un documento. | Milisegundos desde el inicio y, en modo de medición, acciones adicionales. |
 

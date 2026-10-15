@@ -97,11 +97,11 @@ La lectura inicial del archivo pendiente tampoco puede reemplazar una apertura p
 | --- | --- |
 | Encabezados sin identificador | Genera un `id` a partir del texto para permitir enlaces internos. |
 | Casillas de tareas | Fuerza el tipo `checkbox` y las desactiva para mantener la lectura. |
-| Imágenes | Activa carga diferida y decodificación asíncrona; revisa el origen permitido. |
+| Imágenes | `LocalImageController.prepare` revisa los orígenes y sustituye los marcadores locales por texto alternativo. |
 
 Un encabezado `## Cómo abrir` obtiene el identificador `cómo-abrir`. Otro encabezado igual obtiene `cómo-abrir-1`. Los identificadores existentes se conservan, aunque el contador de duplicados solo incluye los que genera esta función.
 
-Las imágenes deben usar HTTPS o una dirección Base64 de un formato admitido. Si no cumplen esa regla, JavaScript elimina su atributo `src`.
+Las imágenes deben usar HTTPS, datos Base64 de un formato admitido o un marcador local del documento recibido. Los demás orígenes pierden `src`. Los marcadores locales se solicitan después del primer pintado, con prioridad para los visibles y hasta dos solicitudes pendientes. La cola comprueba la generación visible antes de insertar cada resultado; cancelar un selector conserva la cola del documento anterior. Los errores de lectura o decodificación conservan el texto alternativo. Consulta [Imágenes locales](imagenes-locales.md).
 
 El HTML se inserta con `innerHTML` porque tiene etiquetas que el WebView debe interpretar. El nombre del archivo y los errores usan `textContent`, que los muestra como texto. La limpieza previa en Rust es parte necesaria del recorrido del HTML.
 

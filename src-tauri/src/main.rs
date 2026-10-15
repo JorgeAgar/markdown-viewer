@@ -16,6 +16,7 @@ use tauri_plugin_opener::OpenerExt;
 
 struct Viewer {
     pending: Mutex<Option<PathBuf>>,
+    images: Mutex<document::ImageStore>,
     started: Instant,
     measured: AtomicBool,
 }
@@ -50,13 +51,37 @@ fn queue_file(app: &tauri::AppHandle, path: PathBuf) {
 }
 
 async fn load_document(app: tauri::AppHandle, path: PathBuf) -> Result<document::Document, String> {
-    let document = tauri::async_runtime::spawn_blocking(move || document::load(&path))
+    let id = app.state::<Viewer>().images.lock().unwrap().begin();
+    let loaded = tauri::async_runtime::spawn_blocking(move || document::load(&path, id))
         .await
         .map_err(|_| "No se pudo procesar el documento.".to_owned())??;
+    let document = app.state::<Viewer>().images.lock().unwrap().publish(loaded);
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.set_title(&format!("{} · Markdown Viewer", document.name));
     }
     Ok(document)
+}
+
+#[tauri::command]
+fn activate_document_images(state: State<'_, Viewer>, document_id: String) -> Result<(), String> {
+    state.images.lock().unwrap().activate(&document_id)
+}
+
+#[tauri::command]
+async fn resolve_document_image(
+    app: tauri::AppHandle,
+    document_id: String,
+    image_id: usize,
+) -> Result<String, String> {
+    let images = app
+        .state::<Viewer>()
+        .images
+        .lock()
+        .unwrap()
+        .get(&document_id)?;
+    tauri::async_runtime::spawn_blocking(move || images.resolve(image_id))
+        .await
+        .map_err(|_| "No se pudo procesar la imagen.".to_owned())?
 }
 
 #[tauri::command]
@@ -144,6 +169,7 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .manage(Viewer {
             pending: Mutex::new(pending),
+            images: Mutex::new(document::ImageStore::default()),
             started,
             measured: AtomicBool::new(false),
         })
@@ -151,6 +177,8 @@ fn main() {
             take_pending_document,
             open_document,
             choose_document,
+            activate_document_images,
+            resolve_document_image,
             open_link,
             content_painted
         ])

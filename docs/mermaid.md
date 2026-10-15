@@ -62,8 +62,8 @@ flowchart TB
     Limpieza --> Vista["SVG accesible y código original"]
 ```
 
-El contrato IPC mantiene los mismos campos de `Document`: `path`, `name`, `html`
-y `bytes`. Rust no ejecuta Mermaid ni permite SVG crudo en el HTML del documento.
+Mermaid usa el HTML de `Document`; los campos actuales son `id`, `path`, `name`,
+`html` y `bytes`. El identificador pertenece a la carga de imágenes locales. Rust no ejecuta Mermaid ni permite SVG crudo en el HTML del documento.
 `ammonia` permite únicamente `language-mermaid` en los elementos `code`.
 Las pruebas de `document.rs` verifican que esa clase y el código escapado se
 conservan, y que las demás clases y los atributos activos se eliminan.
