@@ -84,13 +84,14 @@ jobs:
             libappindicator-gtk3 librsvg dbus xorg-server-xvfb xorg-xauth ttf-dejavu
           useradd --create-home arch-test
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 12.4.2
+      # The base Arch image has no Node on PATH for pnpm's installer.
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: pnpm
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.4.2
+          cache: true
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
