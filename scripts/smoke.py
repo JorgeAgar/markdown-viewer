@@ -154,6 +154,27 @@ with tempfile.TemporaryDirectory(prefix="markdown-viewer-smoke-") as temporary:
         print("PASS: text paints before controlled local reads; later Unicode image loads; missing and oversized images keep alt text")
 
         execute("""
+            window.syntaxCspViolations = [];
+            document.addEventListener('securitypolicyviolation', event => {
+                window.syntaxCspViolations.push({directive: event.violatedDirective, blocked: event.blockedURI});
+            });
+        """)
+        subprocess.run([str(BINARY), str(ROOT / "examples/codigo.md")], check=True, timeout=10)
+        wait_for(lambda: execute("return document.querySelector('#filename').textContent === 'codigo.md'"))
+        wait_for(lambda: execute("return document.querySelector('#document').dataset.syntaxReadyMs"))
+        states = execute("return [...document.querySelectorAll('#document pre > code')].map(el => el.dataset.syntaxState || 'plain')")
+        assert states == ["ready"] * 6 + ["plain", "plain"], states
+        assert execute("return document.querySelector('#document').dataset.readyMs")
+        assert execute("return document.querySelectorAll('#document pre .hljs-keyword').length > 0")
+        assert execute("return document.querySelector('#document pre script, #document pre img, #document pre [style]') === null")
+        assert execute("return document.querySelector('#document code.language-html').textContent.includes('<script>alert(')")
+        assert execute("return window.syntaxCspViolations") == []
+        assert execute("return getComputedStyle(document.querySelector('#document .hljs-keyword')).color !== getComputedStyle(document.querySelector('#document pre')).color")
+        execute("document.querySelector('#reader').scrollTop = 0")
+        screenshot("codigo.png")
+        print("PASS: real syntax highlighting, aliases, local grammar chunks, literal HTML, unknown language fallback, CSS colors and CSP")
+
+        execute("""
             window.mathCspViolations = [];
             document.addEventListener('securitypolicyviolation', event => {
                 window.mathCspViolations.push({directive: event.violatedDirective, blocked: event.blockedURI});
