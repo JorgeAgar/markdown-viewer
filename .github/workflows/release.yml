@@ -52,6 +52,15 @@ jobs:
           mkdir release-assets
           find release-downloads -type f -exec mv -t release-assets -- {} +
           cd release-assets
+          # GitHub replaces spaces with dots in uploaded asset names. Generate
+          # checksums using those final names so downloaded files can be checked.
+          for package in *; do
+            normalized=${package// /.}
+            if [ "$package" != "$normalized" ]; then
+              test ! -e "$normalized"
+              mv -- "$package" "$normalized"
+            fi
+          done
           for extension in deb exe dmg tar.gz; do
             count=$(find . -type f -name "*.$extension" | wc -l)
             test "$count" -eq 1
