@@ -20,6 +20,8 @@ La [documentación del resaltado de código](docs/codigo.md) describe los lengua
 
 ## Uso
 
+Los instaladores y paquetes están en [GitHub Releases](https://github.com/JorgeAgar/markdown-viewer/releases). El proceso para preparar y publicar versiones está documentado en [Publicar una versión](docs/releases.md).
+
 - Abre un archivo con el botón, `Ctrl+O` o `⌘O` en macOS.
 - Arrastra un archivo a la ventana.
 - Pasa una ruta como argumento al ejecutable.

@@ -1,0 +1,79 @@
+name: Release desktop
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Validate version, release notes and main ancestry
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          node scripts/check-version.mjs "$RELEASE_TAG"
+          test -s "docs/releases/${RELEASE_TAG#v}.md"
+          git merge-base --is-ancestor HEAD origin/main
+
+  build:
+    needs: validate
+    uses: ./.github/workflows/build.yml
+
+  publish:
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: markdown-viewer-*
+          path: release-downloads
+          merge-multiple: true
+      - name: Check packages and generate checksums
+        run: |
+          set -euo pipefail
+          mkdir release-assets
+          find release-downloads -type f -exec mv -t release-assets -- {} +
+          cd release-assets
+          for extension in deb exe dmg tar.gz; do
+            count=$(find . -type f -name "*.$extension" | wc -l)
+            test "$count" -eq 1
+          done
+          test "$(find . -type f | wc -l)" -eq 4
+          find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
+          sha256sum --check SHA256SUMS
+      - name: Upload packages and publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --json isDraft > release-state.json 2>/dev/null; then
+            # Published releases are never overwritten by a workflow retry.
+            jq -e '.isDraft == true' release-state.json
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --draft \
+              --title "Markdown Viewer $RELEASE_TAG" \
+              --notes-file "docs/releases/${RELEASE_TAG#v}.md"
+          fi
+          gh release upload "$RELEASE_TAG" release-assets/* --clobber
+          gh release edit "$RELEASE_TAG" --draft=false --latest \
+            --notes-file "docs/releases/${RELEASE_TAG#v}.md"
