@@ -63,6 +63,11 @@ footer { height: 34px; flex-shrink: 0; display: flex; align-items: center; justi
 .markdown img { max-width: 100%; height: auto; border-radius: 5px; }
 .local-image-placeholder { display: inline-block; max-width: 100%; min-height: 1.8em; color: var(--muted); vertical-align: middle; }
 .markdown hr { border: 0; border-top: 1px solid var(--line); margin: 2em 0; }
+.markdown .math-display { display: block; max-width: 100%; overflow-x: auto; overflow-y: hidden; margin: 1em 0; }
+.markdown .math { overflow-wrap: normal; }
+.markdown .math[data-math-state="error"], .markdown .math[data-math-state="pending"] { font-family: ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.markdown .math[data-math-state="error"] { text-decoration: underline dotted var(--accent); text-underline-offset: .2em; }
+.markdown .math .katex-display { margin: .4em 0; }
 .markdown input[type="checkbox"] { accent-color: var(--accent); margin-right: 7px; }
 .markdown .mermaid-diagram { margin: 1.4em 0; padding: 18px; border: 1px solid var(--line); border-radius: 7px; background: var(--paper); }
 .mermaid-svg { overflow: auto; }

@@ -2,7 +2,7 @@
 
 Prototipo de un visor de Markdown para Windows, Linux y macOS. Abre un archivo y muestra su contenido en una sola ventana de solo lectura.
 
-La interfaz usa HTML, CSS y TypeScript sin frameworks. Rust lee el archivo, convierte Markdown a HTML con `pulldown-cmark` y lo limpia con `ammonia`. Mermaid dibuja los diagramas en el WebView; DOMPurify y css-tree filtran el SVG y sus estilos. Estas bibliotecas se incluyen en la app y se cargan bajo demanda. Tauri 2 integra la ventana, los archivos y el navegador del sistema.
+La interfaz usa HTML, CSS y TypeScript sin frameworks. Rust lee el archivo, convierte Markdown a HTML con `pulldown-cmark` y lo limpia con `ammonia`. Mermaid dibuja los diagramas y KaTeX renderiza las fórmulas en el WebView; DOMPurify y css-tree filtran sus resultados y estilos. Estas bibliotecas se incluyen en la app y se cargan bajo demanda. Tauri 2 integra la ventana, los archivos y el navegador del sistema.
 
 ## Documentación
 
@@ -14,6 +14,8 @@ El [plan de renderizado Mermaid](docs/plan-mermaid.html) propone la implementaci
 
 La [documentación de Mermaid](docs/mermaid.md) describe el uso, los límites y la implementación de la función.
 
+La [documentación de LaTeX](docs/latex.md) explica las fórmulas, la carga diferida de KaTeX, la seguridad y las mediciones.
+
 ## Uso
 
 - Abre un archivo con el botón, `Ctrl+O` o `⌘O` en macOS.
@@ -21,7 +23,7 @@ La [documentación de Mermaid](docs/mermaid.md) describe el uso, los límites y 
 - Pasa una ruta como argumento al ejecutable.
 - Tras instalar, elige Markdown Viewer en "Abrir con" para archivos `.md`, `.markdown`, `.mdown` y `.mkd`. El sistema decide la aplicación predeterminada.
 
-El visor admite tablas, listas de tareas, citas, bloques de código, notas al pie, imágenes y diagramas Mermaid. Usa el tema claro u oscuro del sistema. Una segunda apertura envía el archivo a la ventana existente; al cerrar la ventana, la aplicación termina.
+El visor admite tablas, listas de tareas, citas, bloques de código, notas al pie, imágenes, diagramas Mermaid y fórmulas LaTeX. Usa el tema claro u oscuro del sistema. Una segunda apertura envía el archivo a la ventana existente; al cerrar la ventana, la aplicación termina.
 
 Para incluir un diagrama, usa un bloque de código con lenguaje `mermaid`:
 
@@ -33,6 +35,8 @@ flowchart LR
 ````
 
 Los diagramas funcionan sin internet y se dibujan después de mostrar el texto. Cada uno conserva su definición en "Ver código". Un error de sintaxis muestra un aviso junto al bloque y no impide seguir leyendo. Puedes abrir [`examples/mermaid.md`](examples/mermaid.md) para ver los tipos admitidos y los casos de error.
+
+Las fórmulas usan `$E = mc^2$` en línea y `$$…$$` para bloques. KaTeX, sus estilos y sus fuentes se cargan localmente después del primer pintado, solo si hay fórmulas. Un error conserva el TeX legible con su detalle al poner el cursor encima. Usa `\$` para un dólar literal. Puedes abrir [`examples/latex.md`](examples/latex.md) para probarlo sin conexión.
 
 ## Desarrollo
 
@@ -61,7 +65,9 @@ pnpm run dev -- /ruta/completa/archivo.md
 
 `pnpm dev` prepara primero la interfaz y después inicia Tauri con recompilación de TypeScript y copia de HTML y CSS al editar. Tauri recarga la vista al cambiar los archivos generados.
 
-Las fuentes viven en `src/`. `scripts/frontend.mjs` comprueba los tipos con TypeScript, empaqueta `dist/app.js` y los módulos de carga diferida con esbuild, y copia `index.html` y `style.css`. `dist/` se genera automáticamente y no se sube al repositorio. El adaptador `scripts/mermaid-build.mjs` permite usar estilos Mermaid filtrados con el nonce de Tauri; al actualizar la biblioteca hay que revisar ese adaptador.
+Las fuentes viven en `src/`. `scripts/frontend.mjs` comprueba los tipos con TypeScript, empaqueta `dist/app.js` y los módulos de carga diferida con esbuild, copia `index.html` y `style.css`, y prepara el CSS, las fuentes WOFF2 y la licencia de KaTeX. `dist/` se genera automáticamente y no se sube al repositorio. El adaptador `scripts/mermaid-build.mjs` permite usar estilos Mermaid filtrados con el nonce de Tauri; al actualizar la biblioteca hay que revisar ese adaptador.
+
+`scripts/katex-build.mjs` adapta los estilos MathML de KaTeX para que usen CSSOM y respeten la CSP. También debe revisarse al actualizar KaTeX.
 
 ## Compilación
 
@@ -134,7 +140,7 @@ pnpm benchmark examples/bienvenido.md 5
 
 La medición comienza al entrar en `main` y termina tras dos llamadas a `requestAnimationFrame` después de insertar el documento. Es una aproximación al primer pintado del texto; no es una medición del compositor ni incluye la carga de todas las imágenes. El script también informa el tiempo desde la creación del proceso hasta su salida.
 
-No se muestra una ventana de carga ni se espera por recursos de red para mostrar el texto. Las imágenes HTTPS se cargan con `loading="lazy"`. Las imágenes Markdown locales se devuelven como referencias de la apertura y se solicitan después del primer pintado, con hasta dos solicitudes pendientes y prioridad para las visibles. Rust valida y lee cada imagen entonces, sin retrasar la devolución del texto. Mermaid empieza después de la oportunidad de primer pintado del texto. `data-diagrams-ready-ms` registra aparte el tiempo del lote de diagramas, incluida la carga inicial de la biblioteca.
+No se muestra una ventana de carga ni se espera por recursos de red para mostrar el texto. Las imágenes HTTPS se cargan con `loading="lazy"`. Las imágenes Markdown locales se devuelven como referencias de la apertura y se solicitan después del primer pintado, con hasta dos solicitudes pendientes y prioridad para las visibles. Rust valida y lee cada imagen entonces, sin retrasar la devolución del texto. Mermaid y KaTeX empiezan después de la oportunidad de primer pintado del texto. `data-diagrams-ready-ms` y `data-math-ready-ms` registran aparte los tiempos de sus lotes, incluida la carga inicial de las bibliotecas. La medida matemática no incluye necesariamente el pintado ni la carga completa de las fuentes.
 
 Para medir un documento con 32 MiB de imágenes locales, genera una muestra sin añadir archivos grandes al repositorio:
 
@@ -155,4 +161,5 @@ La primera ejecución del script no garantiza cachés frías. Para comparar equi
 - Se elimina HTML activo. Los enlaces web y de correo se abren con la aplicación del sistema; los enlaces a otros archivos locales aún no se abren.
 - Los bloques de código tienen formato monoespaciado, sin resaltado de sintaxis. No hay editor, pestañas, búsqueda, sincronización ni proceso residente.
 - Mermaid admite flujos, secuencias, estados, clases y relaciones entre entidades. Renderiza hasta 50 bloques por documento, con hasta 50.000 unidades UTF-16 por bloque y un límite de 500 aristas de grafo. No admite configuración por bloque, estilos personalizados ni formas con recursos externos. Las acciones de clic están desactivadas.
+- LaTeX admite la notación matemática de KaTeX, hasta 500 fórmulas y 10.000 unidades UTF-16 por fórmula. No compila documentos `.tex` ni paquetes arbitrarios. Las macros no se comparten entre fórmulas; los comandos que crean HTML, enlaces o imágenes no reciben confianza. Consulta [los límites y la seguridad](docs/latex.md).
 - El prototipo requiere pruebas en equipos reales para comparar el tiempo de apertura entre los tres sistemas.
