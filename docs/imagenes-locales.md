@@ -18,7 +18,7 @@ Los fallos de lectura, tamaño o decodificación afectan solo a su imagen y cons
 
 Las pruebas Rust comprueban rutas con espacios y Unicode, escapes, enlaces simbólicos, límites individuales y presupuesto acumulado con solicitudes concurrentes. Una prueba crea la imagen después de que `load` haya devuelto el HTML. Otras comprueban identificadores inválidos, respuestas de aperturas obsoletas y activación por la interfaz.
 
-Las pruebas de interfaz retienen las respuestas de imágenes mientras completan el pintado controlado y `content_painted`. Comprueban carga progresiva, prioridad visible, interacción con el lector, cambio de documento, cancelación del selector y fallos aislados. La prueba nativa en `scripts/smoke.py` retiene las solicitudes antes de llamar a Rust, comprueba el texto visible y crea después una imagen SVG con espacios y Unicode en su nombre. Al liberar la cola, la imagen aparece y las imágenes ausentes o demasiado grandes conservan su texto alternativo.
+Las pruebas de interfaz retienen las respuestas de imágenes mientras completan el pintado controlado y `content_painted`. Comprueban carga progresiva, prioridad visible, interacción con el lector, cambio de documento, cancelación del selector y fallos aislados. La prueba nativa en `pnpm test:e2e` retiene las solicitudes antes de llamar a Rust, comprueba el texto visible y crea después una imagen SVG con espacios y Unicode en su nombre. Al liberar la cola, la imagen aparece y las imágenes ausentes o demasiado grandes conservan su texto alternativo.
 
 Para generar una muestra reproducible con 80 párrafos y cuatro SVG de 8 MiB cada uno:
 

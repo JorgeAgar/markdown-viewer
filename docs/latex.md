@@ -113,7 +113,7 @@ Las pruebas TypeScript cubren carga diferida, primer pintado, cancelaciones,
 resultados tardíos, prioridad visible, lotes, límites, reintentos, KaTeX real,
 aislamiento de macros, saneamiento y recursos locales.
 
-[`smoke.py`](../scripts/smoke.py) añade una comprobación del ejemplo en el WebView
+[`viewer.e2e.ts`](../e2e/viewer.e2e.ts) añade una comprobación del ejemplo en el WebView
 Linux: fórmulas válidas, errores aislados, MathML, fuentes locales y ausencia de
 infracciones CSP. La CI compila además Windows y macOS; el smoke nativo solo se
 ejecuta en Linux. Para comparar apertura, usa el benchmark del

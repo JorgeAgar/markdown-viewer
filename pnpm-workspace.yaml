@@ -1,5 +1,8 @@
 allowBuilds:
   esbuild: true
+  # WebdriverIO connects to the external tauri-driver; no browser downloads.
+  edgedriver: false
+  geckodriver: false
 minimumReleaseAgeExclude:
   - '@tauri-apps/cli-darwin-arm64@2.12.1'
   - '@tauri-apps/cli-darwin-x64@2.12.1'

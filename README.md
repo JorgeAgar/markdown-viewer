@@ -113,7 +113,7 @@ pnpm check
 
 `pnpm check` prepara el frontend con comprobación de tipos y comprueba el formato y los avisos de Rust. `pnpm test` prepara el frontend, ejecuta sus pruebas de comportamiento y después las pruebas Rust, porque Tauri necesita los archivos para compilar. Para comprobar solo TypeScript, usa `pnpm check:frontend`.
 
-`pnpm test:frontend` comprueba tipos y comportamiento de la interfaz sin compilar Rust ni arrancar Tauri. Las pruebas empaquetan las mismas fuentes de la app en un formato que jsdom puede ejecutar, con respuestas controladas de Tauri y sustitutos asíncronos de los renderizadores Mermaid, KaTeX y Highlight.js. Cubren aperturas simultáneas, cancelación y errores del selector, recuperación de botones, archivos pendientes, medición de pintado, carga diferida, cola de diagramas, cambios de tema, límites y resultados tardíos. Otras pruebas ejecutan el saneador SVG y CSS real. Los documentos y el sustituto de Tauri usan los tipos de `src/tauri.d.ts`. Los paquetes ESM de producción y el renderizado real se comprueban en el WebView con `smoke.py`; jsdom no calcula el diseño de los diagramas.
+`pnpm test:frontend` comprueba tipos y comportamiento de la interfaz sin compilar Rust ni arrancar Tauri. Las pruebas empaquetan las mismas fuentes de la app en un formato que jsdom puede ejecutar, con respuestas controladas de Tauri y sustitutos asíncronos de los renderizadores Mermaid, KaTeX y Highlight.js. Cubren aperturas simultáneas, cancelación y errores del selector, recuperación de botones, archivos pendientes, medición de pintado, carga diferida, cola de diagramas, cambios de tema, límites y resultados tardíos. Otras pruebas ejecutan el saneador SVG y CSS real. Los documentos y el sustituto de Tauri usan los tipos de `src/tauri.d.ts`. Los paquetes ESM de producción y el renderizado real se comprueban en el WebView con `pnpm test:e2e`; jsdom no calcula el diseño de los diagramas.
 
 `src/tauri.d.ts` se genera a partir de los comandos registrados en `src-tauri/src/main.rs`, sus argumentos y resultados, los campos de `Document` con `Serialize` y las emisiones de eventos propios. `pnpm check:ipc` compara la declaración guardada con Rust y ejecuta pruebas que introducen cambios incompatibles. También forma parte de `pnpm check` y `pnpm test`. Esta herramienta compila un crate pequeño con `syn`; no compila Tauri ni necesita GTK o WebKit.
 
@@ -125,15 +125,18 @@ Los eventos `tauri://drag-*` proceden de Tauri 2. Sus declaraciones y la API glo
 
 Las pruebas cubren el renderizado, la limpieza de HTML activo, rutas con espacios y Unicode, archivos inválidos, límites de tamaño e imágenes locales fuera de la carpeta del documento.
 
-En Linux, `scripts/smoke.py` prueba la aplicación compilada dentro de su WebView, incluyendo una segunda apertura, imágenes, el selector nativo y manejo de errores. Requiere `tauri-driver`, `WebKitWebDriver`, Xvfb y xdotool:
+En Linux, `pnpm test:e2e` ejecuta WebdriverIO contra el ejecutable release existente, mediante conexión directa a `tauri-driver` y `WebKitWebDriver`. No compila la aplicación. Cierra las instancias abiertas antes de ejecutarlo. Requiere Xvfb, D-Bus y xdotool para el selector nativo:
 
 ```sh
 cargo install tauri-driver --locked
 sudo apt-get install -y webkit2gtk-driver xvfb xdotool
-xvfb-run -a dbus-run-session -- python3 scripts/smoke.py
+pnpm build:binary # una vez; CI reutiliza el release del paso de build
+xvfb-run -a dbus-run-session -- pnpm test:e2e
 ```
 
-El paquete del driver se llama `webkitgtk-webdriver` en versiones recientes de Ubuntu. Las capturas y los registros de la prueba quedan en `artifacts/`, que no se sube al repositorio.
+El paquete del driver se llama `webkitgtk-webdriver` en versiones recientes de Ubuntu. `MD_VIEWER_BINARY` y `TAURI_DRIVER_BINARY` permiten elegir ejecutables; `WebKitWebDriver` se busca en `PATH`. Los puertos 4844 y 4845 deben estar libres.
+
+La suite usa un worker y una sesión a la vez, prepara cada caso por separado y no reintenta fallos. El runner cierra sus grupos de procesos también ante errores y señales. Las capturas, estado del WebView, HTML y logs quedan en `artifacts/e2e/`; CI sube `artifacts/` incluso al fallar. `pnpm check:e2e`, incluido en `pnpm check`, comprueba los tests y la configuración con tipos aislados del frontend y de las pruebas unitarias. Se omite la comprobación interna de declaraciones de dependencias (`skipLibCheck`) por conflictos entre URLPattern de WebdriverIO, DOM y Node; las fuentes E2E sí se comprueban. `pnpm test` sigue sin necesitar escritorio. Consulta el [mapeo de cobertura del smoke anterior](docs/e2e.md).
 
 ## Medición de apertura
 

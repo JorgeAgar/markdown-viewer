@@ -57,7 +57,7 @@ jobs:
         run: |
           sudo apt-get install -y webkit2gtk-driver xvfb xdotool
           cargo install tauri-driver --locked
-          xvfb-run -a dbus-run-session -- python3 scripts/smoke.py
+          xvfb-run -a dbus-run-session -- pnpm test:e2e
           xvfb-run -a dbus-run-session -- pnpm run benchmark examples/bienvenido.md 5 > artifacts/benchmark.txt
       - uses: actions/upload-artifact@v4
         with:

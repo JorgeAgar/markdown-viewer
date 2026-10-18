@@ -156,7 +156,7 @@ Para ampliar la visualización, se debe mostrar primero el texto y cargar cada r
 
 ## 8. Cómo comprobamos que funciona
 
-Las pruebas Rust cubren la conversión, la limpieza de HTML, las rutas, los límites de tamaño y las imágenes. [`scripts/smoke.py`](../scripts/smoke.py) prueba el visor real en Linux, incluido el selector nativo, una segunda apertura y el manejo de errores.
+Las pruebas Rust cubren la conversión, la limpieza de HTML, las rutas, los límites de tamaño y las imágenes. [`e2e/viewer.e2e.ts`](../e2e/viewer.e2e.ts) prueba el visor real en Linux, incluido el selector nativo, una segunda apertura y el manejo de errores.
 
 GitHub Actions compila los paquetes para los tres sistemas y ejecuta las comprobaciones configuradas en [el workflow](../.github/workflows/build.yml). Las pruebas de interfaz actuales se ejecutan en Linux.
 

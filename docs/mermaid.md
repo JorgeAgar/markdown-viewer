@@ -150,7 +150,7 @@ de limpieza ejecutan DOMPurify y css-tree reales. Cubren importación diferida,
 varios bloques, errores aislados, resultados tardíos, cambios de tema,
 reintentos, límites, limpieza de CSS y referencias locales.
 
-`scripts/smoke.py` prueba el paquete ESM de producción dentro de Tauri en Linux,
+`pnpm test:e2e` prueba el paquete ESM de producción dentro de Tauri en Linux,
 con el nonce y la CSP reales. Abre el ejemplo, comprueba SVG de los cinco tipos,
 errores de sintaxis/configuración y los diagramas de la documentación. También
 comprueba que el contenedor temporal desaparece y que no se conserva contenido
@@ -176,7 +176,7 @@ Para validar los cambios:
 pnpm check
 pnpm test
 pnpm build:binary
-xvfb-run -a dbus-run-session -- python3 scripts/smoke.py
+xvfb-run -a dbus-run-session -- pnpm test:e2e
 ```
 
 Los requisitos de la prueba nativa están en el [README](../README.md#validación).

@@ -312,7 +312,7 @@ async function renderMermaid(root, generation, theme) {
           <tr><td>Rust · <code>document.rs</code></td><td>Clase de lenguaje preservada, fuente escapada, varios bloques y limpieza de HTML malicioso. Regresiones de imágenes y enlaces cubiertas.</td></tr>
           <tr><td>TypeScript · <code>frontend.test.ts</code></td><td>Importación solo cuando hace falta; una carga compartida; error por bloque; cola; límites; cambio de tema; A/B; apertura cancelada o fallida; resultado tardío; reintento de carga.</td></tr>
           <tr><td>Adaptación de pruebas</td><td>Hoy las pruebas leen <code>dist/app.js</code> y usan <code>window.eval</code>. Al pasar a ESM con chunks, añadir una compilación de prueba IIFE con un renderizador sustituible, manteniendo la misma entrada <code>app.ts</code>. La carga ESM de producción se comprueba en WebView.</td></tr>
-          <tr><td>WebView · <code>smoke.py</code></td><td>SVG real, CSP sin infracciones inesperadas, etiquetas y flechas visibles, cambio de tema, segunda apertura, varios tipos de diagramas y funcionamiento sin red.</td></tr>
+          <tr><td>WebView · <code>pnpm test:e2e</code></td><td>SVG real, CSP sin infracciones inesperadas, etiquetas y flechas visibles, cambio de tema, segunda apertura, varios tipos de diagramas y funcionamiento sin red.</td></tr>
           <tr><td>Contenido hostil</td><td>Directivas que intentan cambiar seguridad, etiquetas HTML, enlaces <code>javascript:</code>, eventos, <code>foreignObject</code>, CSS fuera del diagrama y recursos externos rechazados, también durante el render temporal.</td></tr>
           <tr><td>Distribución</td><td>Paquetes Windows, Linux y macOS con todos los chunks. Comprobar WebView2, WebKitGTK y WKWebView en las versiones mínimas acordadas.</td></tr>
         </tbody></table></div>
@@ -323,7 +323,7 @@ async function renderMermaid(root, generation, theme) {
 pnpm test
 pnpm build:binary
 # En Linux, con las herramientas nativas del proyecto:
-xvfb-run -a dbus-run-session -- python3 scripts/smoke.py
+xvfb-run -a dbus-run-session -- pnpm test:e2e
 # En una sesión real de escritorio y con la instancia cerrada:
 pnpm benchmark examples/bienvenido.md 5</code></pre>
         <p>Añadir <code>examples/mermaid.md</code> con los tipos validados, un error de sintaxis y texto antes y después. Crear una variante con 50 bloques para medir la cola.</p>

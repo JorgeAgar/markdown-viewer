@@ -117,6 +117,6 @@ Los comandos propios se registran en `invoke_handler`. El [archivo de capacidade
 
 ## 8. Cómo comprobar o ampliar esta pieza
 
-Las pruebas en `main.rs` comprueban rutas relativas y direcciones de archivo con espacios y Unicode. La [prueba de interfaz en Linux](../scripts/smoke.py) comprueba también la segunda apertura, el selector y la restricción de enlaces. Los comandos para validarlo están en el [README](../README.md#validación).
+Las pruebas en `main.rs` comprueban rutas relativas y direcciones de archivo con espacios y Unicode. La [prueba de interfaz en Linux](../e2e/viewer.e2e.ts) comprueba también la segunda apertura, el selector y la restricción de enlaces. Los comandos para validarlo están en el [README](../README.md#validación).
 
 Para añadir otra entrada de apertura, haz que llegue a `load_document` o al estado pendiente. Para cambiar cómo se interpreta el contenido, consulta [Procesamiento del documento](procesamiento-documento.md). Para modificar cuándo se muestra el resultado, consulta [La interfaz](interfaz.md).
