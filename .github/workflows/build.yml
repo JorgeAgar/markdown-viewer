@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_call:
+    inputs:
+      linux_only:
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       linux_only:

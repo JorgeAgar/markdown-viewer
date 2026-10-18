@@ -10,15 +10,17 @@
     "build:binary": "tauri build --no-bundle",
     "build:arch": "pnpm build:binary && pnpm package:arch",
     "package:arch": "node scripts/package-arch.mjs",
-    "test": "pnpm check:ipc && pnpm test:frontend && cargo test --manifest-path src-tauri/Cargo.toml",
-    "check": "pnpm check:ipc && pnpm build:frontend && node --check scripts/frontend.mjs && node --check scripts/package-arch.mjs && cargo fmt --manifest-path scripts/ipc-contract/Cargo.toml -- --check && cargo fmt --manifest-path src-tauri/Cargo.toml -- --check && cargo clippy --manifest-path scripts/ipc-contract/Cargo.toml --all-targets -- -D warnings && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
+    "test": "pnpm test:release && pnpm check:ipc && pnpm test:frontend && cargo test --manifest-path src-tauri/Cargo.toml",
+    "check": "pnpm check:version && pnpm check:ipc && pnpm build:frontend && node --check scripts/frontend.mjs && node --check scripts/package-arch.mjs && cargo fmt --manifest-path scripts/ipc-contract/Cargo.toml -- --check && cargo fmt --manifest-path src-tauri/Cargo.toml -- --check && cargo clippy --manifest-path scripts/ipc-contract/Cargo.toml --all-targets -- -D warnings && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
     "benchmark": "node scripts/benchmark.mjs",
     "build:frontend": "node scripts/frontend.mjs",
     "watch:frontend": "node scripts/frontend.mjs --watch",
     "check:frontend": "tsc --noEmit",
     "check:ipc": "cargo run --locked --manifest-path scripts/ipc-contract/Cargo.toml -- --check && cargo test --locked --manifest-path scripts/ipc-contract/Cargo.toml",
     "generate:ipc": "cargo run --locked --manifest-path scripts/ipc-contract/Cargo.toml -- --write",
-    "test:frontend": "pnpm build:frontend && node scripts/test-frontend.mjs && tsc --project tsconfig.tests.json && node --test tests/*.test.ts"
+    "test:frontend": "pnpm build:frontend && node scripts/test-frontend.mjs && tsc --project tsconfig.tests.json && node --test tests/*.test.ts",
+    "check:version": "node scripts/check-version.mjs",
+    "test:release": "node --test scripts/check-version.test.mjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.12.1",
