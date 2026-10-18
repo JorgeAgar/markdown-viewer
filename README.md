@@ -2,7 +2,7 @@
 
 Prototipo de un visor de Markdown para Windows, Linux y macOS. Abre un archivo y muestra su contenido en una sola ventana de solo lectura.
 
-La interfaz usa HTML, CSS y TypeScript sin frameworks. Rust lee el archivo, convierte Markdown a HTML con `pulldown-cmark` y lo limpia con `ammonia`. Mermaid dibuja los diagramas y KaTeX renderiza las fórmulas en el WebView; DOMPurify y css-tree filtran sus resultados y estilos. Estas bibliotecas se incluyen en la app y se cargan bajo demanda. Tauri 2 integra la ventana, los archivos y el navegador del sistema.
+La interfaz usa HTML, CSS y TypeScript sin frameworks. Rust lee el archivo, convierte Markdown a HTML con `pulldown-cmark` y lo limpia con `ammonia`. Mermaid dibuja los diagramas y KaTeX renderiza las fórmulas en el WebView; DOMPurify y css-tree filtran sus resultados y estilos. Highlight.js resalta los bloques de código con lenguaje admitido. Estas bibliotecas se incluyen en la app y se cargan bajo demanda. Tauri 2 integra la ventana, los archivos y el navegador del sistema.
 
 ## Documentación
 
@@ -15,6 +15,8 @@ El [plan de renderizado Mermaid](docs/plan-mermaid.html) propone la implementaci
 La [documentación de Mermaid](docs/mermaid.md) describe el uso, los límites y la implementación de la función.
 
 La [documentación de LaTeX](docs/latex.md) explica las fórmulas, la carga diferida de KaTeX, la seguridad y las mediciones.
+
+La [documentación del resaltado de código](docs/codigo.md) describe los lenguajes, la carga diferida de Highlight.js y sus límites.
 
 ## Uso
 
@@ -37,6 +39,8 @@ flowchart LR
 Los diagramas funcionan sin internet y se dibujan después de mostrar el texto. Cada uno conserva su definición en "Ver código". Un error de sintaxis muestra un aviso junto al bloque y no impide seguir leyendo. Puedes abrir [`examples/mermaid.md`](examples/mermaid.md) para ver los tipos admitidos y los casos de error.
 
 Las fórmulas usan `$E = mc^2$` en línea y `$$…$$` para bloques. KaTeX, sus estilos y sus fuentes se cargan localmente después del primer pintado, solo si hay fórmulas. Un error conserva el TeX legible con su detalle al poner el cursor encima. Usa `\$` para un dólar literal. Puedes abrir [`examples/latex.md`](examples/latex.md) para probarlo sin conexión.
+
+Los bloques de código con lenguaje admitido (por ejemplo, `rust`, `ts`, `python` o `sh`) reciben colores después de mostrar el texto. Highlight.js y cada gramática se cargan localmente bajo demanda. El código en línea y los bloques sin lenguaje o con uno desconocido permanecen literales. Los colores siguen el tema del sistema sin cambiar el tamaño de los bloques. Prueba [`examples/codigo.md`](examples/codigo.md).
 
 ## Desarrollo
 
@@ -107,7 +111,7 @@ pnpm check
 
 `pnpm check` prepara el frontend con comprobación de tipos y comprueba el formato y los avisos de Rust. `pnpm test` prepara el frontend, ejecuta sus pruebas de comportamiento y después las pruebas Rust, porque Tauri necesita los archivos para compilar. Para comprobar solo TypeScript, usa `pnpm check:frontend`.
 
-`pnpm test:frontend` comprueba tipos y comportamiento de la interfaz sin compilar Rust ni arrancar Tauri. Las pruebas empaquetan las mismas fuentes de la app en un formato que jsdom puede ejecutar, con respuestas controladas de Tauri y un sustituto asíncrono del renderizador Mermaid. Cubren aperturas simultáneas, cancelación y errores del selector, recuperación de botones, archivos pendientes, medición de pintado, carga diferida, cola de diagramas, cambios de tema, límites y resultados tardíos. Otras pruebas ejecutan el saneador SVG y CSS real. Los documentos y el sustituto de Tauri usan los tipos de `src/tauri.d.ts`. Los paquetes ESM de producción y el renderizado real se comprueban en el WebView con `smoke.py`; jsdom no calcula el diseño de los diagramas.
+`pnpm test:frontend` comprueba tipos y comportamiento de la interfaz sin compilar Rust ni arrancar Tauri. Las pruebas empaquetan las mismas fuentes de la app en un formato que jsdom puede ejecutar, con respuestas controladas de Tauri y sustitutos asíncronos de los renderizadores Mermaid, KaTeX y Highlight.js. Cubren aperturas simultáneas, cancelación y errores del selector, recuperación de botones, archivos pendientes, medición de pintado, carga diferida, cola de diagramas, cambios de tema, límites y resultados tardíos. Otras pruebas ejecutan el saneador SVG y CSS real. Los documentos y el sustituto de Tauri usan los tipos de `src/tauri.d.ts`. Los paquetes ESM de producción y el renderizado real se comprueban en el WebView con `smoke.py`; jsdom no calcula el diseño de los diagramas.
 
 `src/tauri.d.ts` se genera a partir de los comandos registrados en `src-tauri/src/main.rs`, sus argumentos y resultados, los campos de `Document` con `Serialize` y las emisiones de eventos propios. `pnpm check:ipc` compara la declaración guardada con Rust y ejecuta pruebas que introducen cambios incompatibles. También forma parte de `pnpm check` y `pnpm test`. Esta herramienta compila un crate pequeño con `syn`; no compila Tauri ni necesita GTK o WebKit.
 
@@ -140,7 +144,7 @@ pnpm benchmark examples/bienvenido.md 5
 
 La medición comienza al entrar en `main` y termina tras dos llamadas a `requestAnimationFrame` después de insertar el documento. Es una aproximación al primer pintado del texto; no es una medición del compositor ni incluye la carga de todas las imágenes. El script también informa el tiempo desde la creación del proceso hasta su salida.
 
-No se muestra una ventana de carga ni se espera por recursos de red para mostrar el texto. Las imágenes HTTPS se cargan con `loading="lazy"`. Las imágenes Markdown locales se devuelven como referencias de la apertura y se solicitan después del primer pintado, con hasta dos solicitudes pendientes y prioridad para las visibles. Rust valida y lee cada imagen entonces, sin retrasar la devolución del texto. Mermaid y KaTeX empiezan después de la oportunidad de primer pintado del texto. `data-diagrams-ready-ms` y `data-math-ready-ms` registran aparte los tiempos de sus lotes, incluida la carga inicial de las bibliotecas. La medida matemática no incluye necesariamente el pintado ni la carga completa de las fuentes.
+No se muestra una ventana de carga ni se espera por recursos de red para mostrar el texto. Las imágenes HTTPS se cargan con `loading="lazy"`. Las imágenes Markdown locales se devuelven como referencias de la apertura y se solicitan después del primer pintado, con hasta dos solicitudes pendientes y prioridad para las visibles. Rust valida y lee cada imagen entonces, sin retrasar la devolución del texto. Mermaid, KaTeX y Highlight.js empiezan después de la oportunidad de primer pintado del texto. `data-diagrams-ready-ms`, `data-math-ready-ms` y `data-syntax-ready-ms` registran aparte los tiempos de sus lotes, incluida la carga inicial de las bibliotecas. La medida matemática no incluye necesariamente el pintado ni la carga completa de las fuentes.
 
 Para medir un documento con 32 MiB de imágenes locales, genera una muestra sin añadir archivos grandes al repositorio:
 

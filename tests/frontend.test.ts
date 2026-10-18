@@ -154,7 +154,43 @@ test('startup without a pending file leaves the empty view ready', async (t) => 
   assert.equal(viewer.element('status').textContent, 'Listo para leer');
   viewer.assertButtons(false);
   assert.equal(viewer.window.__mathLoads, undefined);
+  assert.equal(viewer.window.__syntaxLoads, undefined);
 });
+
+test('code highlighting waits for paint without delaying text readiness; late output is ignored', async t => {
+  const viewer = await createViewer(t);
+  const pending = Promise.withResolvers<string>();
+  viewer.window.__renderCodeForTests = () => pending.promise;
+  await viewer.load({ ...rendered('code.md'), html: '<pre><code class="language-ts">const x = 1;</code></pre>' });
+  assert.equal(viewer.window.__syntaxLoads, undefined);
+  await viewer.paint();
+  viewer.tauri.take('content_painted').resolve(12);
+  await settle();
+  assert.equal(viewer.window.__syntaxLoads, 1);
+  assert.equal(viewer.element('document').dataset.readyMs, '12.00');
+  assert.equal(viewer.element('document').dataset.syntaxReadyMs, undefined);
+  await viewer.load(rendered('plain.md'));
+  pending.resolve('<span>late code</span>');
+  await settle();
+  viewer.assertDocument(rendered('plain.md'));
+});
+
+for (const outcome of ['cancel', 'error'] as const) {
+  test(`code highlighting survives a picker ${outcome} before paint`, async t => {
+    const viewer = await createViewer(t);
+    viewer.window.__renderCodeForTests = async () => '<span>const</span> x = 1;';
+    await viewer.load({ ...rendered('code.md'), html: '<pre><code class="language-js">const x = 1;</code></pre>' });
+    viewer.element<HTMLButtonElement>('open').click();
+    const picker = viewer.tauri.take('choose_document');
+    if (outcome === 'cancel') picker.resolve(null);
+    else picker.reject('Picker failed');
+    await settle();
+    await viewer.paint();
+    assert.equal(viewer.tauri.calls.some(call => call.command === 'content_painted'), false);
+    assert.equal(viewer.window.__syntaxLoads, 1);
+    assert.equal(viewer.element('document').querySelector<HTMLElement>('code')?.dataset.syntaxState, 'ready');
+  });
+}
 
 test('math starts after paint without delaying text readiness or ordinary documents', async t => {
   const viewer = await createViewer(t);

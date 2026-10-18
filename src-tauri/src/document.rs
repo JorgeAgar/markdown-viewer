@@ -224,7 +224,47 @@ fn render(markdown: &str, document_id: &str) -> (String, Vec<String>) {
         .add_tag_attributes("input", &["type", "checked", "disabled"])
         .add_tag_attributes("th", &["align"])
         .add_tag_attributes("td", &["align"])
-        .add_allowed_classes("code", &["language-mermaid"])
+        // Keep these names/aliases in sync with src/syntax-languages.ts.
+        .add_allowed_classes(
+            "code",
+            &[
+                "language-mermaid",
+                "language-javascript",
+                "language-js",
+                "language-jsx",
+                "language-typescript",
+                "language-ts",
+                "language-tsx",
+                "language-python",
+                "language-py",
+                "language-rust",
+                "language-rs",
+                "language-bash",
+                "language-sh",
+                "language-shell",
+                "language-json",
+                "language-yaml",
+                "language-yml",
+                "language-toml",
+                "language-ini",
+                "language-css",
+                "language-html",
+                "language-xml",
+                "language-svg",
+                "language-sql",
+                "language-c",
+                "language-cpp",
+                "language-c++",
+                "language-go",
+                "language-java",
+                "language-csharp",
+                "language-cs",
+                "language-diff",
+                "language-markdown",
+                "language-md",
+                "language-dockerfile",
+            ],
+        )
         .add_allowed_classes("span", &["math", "math-inline", "math-display"])
         .add_generic_attributes(&["id"])
         .url_schemes(["https", "http", "mailto", "data"].into_iter().collect())
@@ -349,12 +389,12 @@ mod tests {
         assert_eq!(html.matches("class=\"language-mermaid\"").count(), 2);
         assert!(html.contains("Café &lt; &amp; &gt;"));
         assert!(html.contains("let n = 1;"));
-        assert!(!html.contains("language-rust"));
+        assert!(html.contains("language-rust"));
         assert!(!html.contains("<svg"));
     }
 
     #[test]
-    fn allows_only_the_mermaid_class_on_code() {
+    fn allows_only_supported_language_classes_on_code() {
         let html = render(
             "<div class=\"language-mermaid\">Texto</div>\n\n<pre><code class=\"language-mermaid toolbar mermaid-svg\" style=\"color:red\" onclick=\"alert(1)\">flowchart LR\nA--&gt;B</code></pre>",
             Path::new("/"),
@@ -364,6 +404,27 @@ mod tests {
         assert!(!html.contains("mermaid-svg"));
         assert!(!html.contains("style="));
         assert!(!html.contains("onclick="));
+    }
+
+    #[test]
+    fn preserves_code_languages_aliases_and_literal_source() {
+        let html = render(
+            "```ts extra\nconst x = '<script>alert(1)</script>';\n```\n\n```sh\necho hello\n```\n\n```unknown\nplain\n```\n\n<code class=\"language-python toolbar\" onclick=\"alert(1)\">print(1)</code>\n\n<div class=\"language-js\">plain</div>",
+            Path::new("/"),
+        );
+        assert!(html.contains("class=\"language-ts\""));
+        assert!(html.contains("class=\"language-sh\""));
+        assert!(html.contains("class=\"language-python\""));
+        assert!(html.contains("&lt;script&gt;alert(1)&lt;/script&gt;"));
+        for forbidden in [
+            "language-unknown",
+            "language-js",
+            "toolbar",
+            "onclick=",
+            "<script>",
+        ] {
+            assert!(!html.contains(forbidden), "{forbidden}");
+        }
     }
 
     #[test]

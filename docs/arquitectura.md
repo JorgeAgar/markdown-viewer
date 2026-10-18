@@ -87,7 +87,7 @@ Durante ese procesamiento, Rust registra las imágenes Markdown locales y devuel
 
 `ammonia` elimina elementos y atributos peligrosos, como scripts y manejadores de eventos. El visor muestra el HTML permitido con nuestro CSS, que sigue el tema claro u oscuro del sistema.
 
-Los bloques de código se muestran con letra monoespaciada. Los bloques con lenguaje `mermaid` se convierten después en diagramas SVG. Las fórmulas `$…$` y `$$…$$` se representan con KaTeX después del primer pintado, con recursos locales y limpieza del resultado. Consulta [LaTeX](latex.md). No hay resaltado de sintaxis. Tampoco hemos verificado el visor contra toda la suite de CommonMark.
+Los bloques de código se muestran con letra monoespaciada. Los bloques con lenguaje `mermaid` se convierten después en diagramas SVG. Las fórmulas `$…$` y `$$…$$` se representan con KaTeX después del primer pintado, con recursos locales y limpieza del resultado. Consulta [LaTeX](latex.md). Los bloques con lenguaje admitido se resaltan con Highlight.js después del primer pintado; consulta [Código](codigo.md). Tampoco hemos verificado el visor contra toda la suite de CommonMark.
 
 ## 4. Cómo llega un archivo desde el sistema operativo
 
@@ -150,11 +150,7 @@ La cola procesa un diagrama a la vez. Una generación del documento visible y de
 
 KaTeX sigue el mismo principio de carga diferida: `math.ts` recoge las fórmulas, importa el renderizador después de mostrar el texto y procesa lotes con prioridad visible. La limpieza conserva HTML, SVG y MathML y aplica estilos filtrados mediante CSSOM sin ampliar la CSP. Una generación del documento descarta resultados obsoletos. El detalle está en [LaTeX](latex.md).
 
-Estas ampliaciones siguen pendientes:
-
-| Función | Cómo encajaría |
-| --- | --- |
-| Resaltado de código | Detectar el lenguaje de los bloques y aplicar el resaltado. |
+Highlight.js sigue el mismo patrón: `syntax.ts` descubre los bloques después del primer pintado, carga el núcleo y cada gramática bajo demanda y resalta por tandas con prioridad visible. Los colores cambian por CSS sin volver a tokenizar. Consulta [Código](codigo.md).
 
 Para ampliar la visualización, se debe mostrar primero el texto y cargar cada renderizador solo cuando haga falta. Las bibliotecas deben incluirse en la app para funcionar sin internet. También hay que medir su efecto en la apertura y revisar la limpieza y la CSP.
 

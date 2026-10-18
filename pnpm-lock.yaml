@@ -14,6 +14,9 @@ importers:
       dompurify:
         specifier: 3.4.16
         version: 3.4.16
+      highlight.js:
+        specifier: 11.12.0
+        version: 11.12.0
       katex:
         specifier: 0.19.0
         version: 0.19.0
@@ -803,6 +806,10 @@ packages:
 
   hachure-fill@0.5.2:
     resolution: {integrity: sha512-3GKBOn+m2LX9iq+JC1064cSFprJY4jL1jCXTcpnfER5HYE2l/4EfWSGzkPa/ZDBmYI0ZOEj5VHV/eKnPGkHuOg==}
+
+  highlight.js@11.12.0:
+    resolution: {integrity: sha512-nbfWpyRMcMrPMmDwJB+dhX/eiaPKtc2RB+0QZskqJ3WjRA/FDS0e9hZrx8EC/lbEv8gXy98FcDbNa/dspAaJMg==}
+    engines: {node: '>=12.0.0'}
 
   html-encoding-sniffer@7.0.0:
     resolution: {integrity: sha512-UikN5yr7xsCDAq87Or5or0PAlD3HJJOKVzM05az588WnpDJ4Ux7a2A53Qi6gofGg2/EtvF/H4hCi/TXfCW4Y6w==}
@@ -1654,6 +1661,8 @@ snapshots:
       strictdom: 1.0.1
 
   hachure-fill@0.5.2: {}
+
+  highlight.js@11.12.0: {}
 
   html-encoding-sniffer@7.0.0:
     dependencies:
