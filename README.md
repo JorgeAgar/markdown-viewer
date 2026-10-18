@@ -76,6 +76,22 @@ El primer comando genera el ejecutable optimizado en `src-tauri/target/release/`
 
 Compila cada versión en su sistema correspondiente. El workflow de GitHub Actions compila Linux, Windows y macOS y guarda paquetes `.deb`, `.exe` y `.dmg` como artefactos. Los paquetes del prototipo no tienen firma de distribución ni notarización.
 
+### Build para Arch Linux
+
+El workflow también tiene un job independiente en un contenedor Arch Linux que genera `markdown-viewer-<versión>-arch-x86_64.tar.gz`. El artefacto `markdown-viewer-Arch-x86_64` contiene el tar con el ejecutable, el icono, un `.desktop` y las [instrucciones de uso e instalación](packaging/arch/README.md). La build usa las bibliotecas de un Arch actualizado y está destinada a x86_64.
+
+Para generarlo en Arch, necesitas Node.js 24, pnpm y Rust estable. Instala las bibliotecas de desarrollo y ejecuta:
+
+```sh
+sudo pacman -Syu --needed base-devel webkit2gtk-4.1 openssl libappindicator-gtk3 librsvg
+pnpm install --frozen-lockfile
+pnpm build:arch
+```
+
+El tar queda en `artifacts/packages/`. `pnpm package:arch` empaqueta una build release existente sin volver a compilar. La interfaz y Mermaid quedan incluidos en el ejecutable; el tar necesita GTK y WebKitGTK del sistema. Para usarlo no necesitas las herramientas de desarrollo.
+
+El CI extrae el tar, comprueba sus bibliotecas compartidas y mide cinco aperturas del ejecutable extraído en un escritorio virtual. Los registros quedan en `arch-validation`. La opción manual `linux_only` ejecuta ambos jobs Linux, Ubuntu y Arch.
+
 ## Validación
 
 ```sh
