@@ -153,7 +153,49 @@ test('startup without a pending file leaves the empty view ready', async (t) => 
   assert.equal(viewer.element('empty').hidden, false);
   assert.equal(viewer.element('status').textContent, 'Listo para leer');
   viewer.assertButtons(false);
+  assert.equal(viewer.window.__mathLoads, undefined);
 });
+
+test('math starts after paint without delaying text readiness or ordinary documents', async t => {
+  const viewer = await createViewer(t);
+  const pending = Promise.withResolvers<HTMLElement>();
+  viewer.window.__renderMathForTests = () => pending.promise;
+  await viewer.load({ ...rendered('math.md'), html: '<p>Texto <span class="math math-inline">x^2</span></p>' });
+  assert.equal(viewer.window.__mathLoads, undefined);
+  await viewer.paint();
+  viewer.tauri.take('content_painted').resolve(12);
+  await settle();
+  assert.equal(viewer.window.__mathLoads, 1);
+  assert.equal(viewer.element('document').dataset.readyMs, '12.00');
+  assert.equal(viewer.element('document').dataset.mathReadyMs, undefined);
+  await viewer.load(rendered('plain.md'));
+  const node = viewer.window.document.createElement('span');
+  node.textContent = 'late math';
+  pending.resolve(node);
+  await settle();
+  viewer.assertDocument(rendered('plain.md'));
+});
+
+for (const outcome of ['cancel', 'error'] as const) {
+  test(`math rendering survives a picker ${outcome} before paint`, async t => {
+    const viewer = await createViewer(t);
+    viewer.window.__renderMathForTests = async source => {
+      const node = viewer.window.document.createElement('span');
+      node.textContent = `rendered ${source}`;
+      return node;
+    };
+    await viewer.load({ ...rendered('math.md'), html: '<span class="math math-inline">x^2</span>' });
+    viewer.element<HTMLButtonElement>('open').click();
+    const picker = viewer.tauri.take('choose_document');
+    if (outcome === 'cancel') picker.resolve(null);
+    else picker.reject('Picker failed');
+    await settle();
+    await viewer.paint();
+    assert.equal(viewer.tauri.calls.some(call => call.command === 'content_painted'), false);
+    assert.equal(viewer.window.__mathLoads, 1);
+    assert.equal(viewer.element('document').querySelector<HTMLElement>('.math')?.dataset.mathState, 'ready');
+  });
+}
 
 for (const stale of ['document', 'error'] as const) {
   test(`latest opening wins over an older ${stale}`, async (t) => {

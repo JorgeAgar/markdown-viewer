@@ -29,6 +29,9 @@ HTML define los elementos, CSS decide cómo se ven y JavaScript actualiza su con
 | [`src/mermaid.ts`](../src/mermaid.ts) | Detección, código original, límites, cola y generaciones de documento/tema. |
 | [`src/mermaid-runtime.ts`](../src/mermaid-runtime.ts) | Biblioteca local de Mermaid, configuración estricta y contenedor temporal. |
 | [`src/diagram-svg.ts`](../src/diagram-svg.ts) | Limpieza del SVG, CSS y referencias internas; autorización de estilos mediante nonce. |
+| [`src/math.ts`](../src/math.ts) | Fórmulas, carga diferida tras el pintado, prioridad visible, límites y generaciones. |
+| [`src/math-runtime.ts`](../src/math-runtime.ts) | KaTeX local, estilos, MathML y saneamiento compatible con CSP. |
+| [`src/math-style.ts`](../src/math-style.ts) | Propiedades CSS matemáticas permitidas y adaptación de atributos MathML mediante CSSOM. |
 
 ## 2. Qué aparece en la ventana
 
@@ -109,6 +112,8 @@ Después, `MermaidController.prepare` encuentra `pre > code.language-mermaid` y 
 
 Mermaid se carga en un módulo local diferido. Cada SVG se limpia antes de insertarlo mediante `replaceChildren`. Un error muestra un aviso dentro de su figura y deja el código abierto. Una cola evita renderizados simultáneos y comprueba la generación del documento y del tema antes y después de cada espera. Consulta [Mermaid](mermaid.md) para los límites y la política de estilos.
 
+`MathController.prepare` recoge los marcadores de fórmulas que dejó Rust. Después del primer pintado carga KaTeX y su CSS local, da prioridad a las fórmulas visibles y procesa lotes de ocho. Conserva el TeX si falla una fórmula y descarta resultados de documentos reemplazados. La salida incluye MathML y se limpia antes de insertarla como nodos mediante `replaceChildren`. Consulta [LaTeX](latex.md) para sintaxis, límites y CSP.
+
 ## 6. Cómo funcionan los enlaces y el diseño
 
 La interfaz escucha los clics en el artículo, incluidos los clics con el botón central. Impide la navegación automática del WebView y decide qué hacer con el destino.
@@ -133,4 +138,4 @@ Para modificar la distribución o la tipografía, empieza por HTML y CSS. Para a
 
 Para comprobar la interacción sin compilar Rust, ejecuta `pnpm test:frontend`. [`tests/frontend.test.ts`](../tests/frontend.test.ts) carga el HTML real y una compilación de las mismas fuentes con un sustituto de Mermaid. Controla las respuestas de Tauri y los fotogramas para probar carreras de apertura. [`tests/mermaid.test.ts`](../tests/mermaid.test.ts) prueba la cola, el tema, los límites, los errores y el saneador real. El comando también comprueba los tipos de las pruebas contra el contrato compartido. Estas pruebas no comprueban el diseño SVG del WebView ni el selector del sistema; `smoke.py` mantiene esa validación en Linux.
 
-Las fórmulas y el resaltado de código aún no están implementados. Su incorporación requeriría revisar el procesamiento, la preparación del HTML y la política de contenido de Tauri.
+[`tests/math.test.ts`](../tests/math.test.ts) prueba el controlador matemático, KaTeX real, saneamiento, macros y recursos locales. El resaltado de código aún no está implementado.

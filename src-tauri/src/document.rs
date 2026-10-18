@@ -184,7 +184,8 @@ fn render(markdown: &str, document_id: &str) -> (String, Vec<String>) {
     let options = Options::ENABLE_TABLES
         | Options::ENABLE_STRIKETHROUGH
         | Options::ENABLE_TASKLISTS
-        | Options::ENABLE_FOOTNOTES;
+        | Options::ENABLE_FOOTNOTES
+        | Options::ENABLE_MATH;
     let mut sources = Vec::new();
     let parser = Parser::new_ext(markdown, options).map(|event| match event {
         Event::Start(Tag::Image {
@@ -224,6 +225,7 @@ fn render(markdown: &str, document_id: &str) -> (String, Vec<String>) {
         .add_tag_attributes("th", &["align"])
         .add_tag_attributes("td", &["align"])
         .add_allowed_classes("code", &["language-mermaid"])
+        .add_allowed_classes("span", &["math", "math-inline", "math-display"])
         .add_generic_attributes(&["id"])
         .url_schemes(["https", "http", "mailto", "data"].into_iter().collect())
         .url_relative(ammonia::UrlRelative::Custom(Box::new(relative_url)))
@@ -295,6 +297,47 @@ mod tests {
         assert!(!html.contains("<script"));
         assert!(!html.contains("onerror"));
         assert!(!html.contains("javascript:"));
+    }
+
+    #[test]
+    fn preserves_math_markers_and_escapes_formula_source() {
+        let html = render(
+            "En línea $a < b \\land c > d$ y $\\frac{1}{2}$.\n\n$$\n\\begin{pmatrix}1 & 2 \\\\ 3 & 4\\end{pmatrix}\n$$",
+            Path::new("/"),
+        );
+        assert_eq!(html.matches("math-inline").count(), 2);
+        assert_eq!(html.matches("math-display").count(), 1);
+        assert!(html.contains("a &lt; b \\land c &gt; d"));
+        assert!(html.contains("1 &amp; 2"));
+        assert!(!html.contains("katex"));
+    }
+
+    #[test]
+    fn math_respects_code_escaped_dollars_and_prices() {
+        let html = render(
+            "`$x$`\n\n```latex\n$$y$$\n```\n\n```mermaid\nflowchart LR\nA[\"$z$\"]-->B\n```\n\nCuesta \\$5 y \\$10.\n\nPrecio $5.00 y total $10.00.\n\nDólar sin pareja: $20.",
+            Path::new("/"),
+        );
+        assert!(!html.contains("math-inline"));
+        assert!(!html.contains("math-display"));
+        assert!(html.contains("<code>$x$</code>"));
+        assert!(html.contains("$$y$$"));
+        assert!(html.contains("$z$"));
+        assert!(html.contains("Cuesta $5 y $10."));
+    }
+
+    #[test]
+    fn only_math_marker_classes_survive_on_spans() {
+        let html = render(
+            "<span class=\"math math-inline katex arbitrary\" style=\"color:red\" onclick=\"alert(1)\">&lt;script&gt;</span>",
+            Path::new("/"),
+        );
+        assert!(html.contains("class=\"math math-inline\""));
+        assert!(html.contains("&lt;script&gt;"));
+        assert!(!html.contains("katex"));
+        assert!(!html.contains("arbitrary"));
+        assert!(!html.contains("style="));
+        assert!(!html.contains("onclick="));
     }
 
     #[test]

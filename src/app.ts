@@ -1,5 +1,6 @@
 import { MermaidController } from './mermaid';
 import { LocalImageController } from './local-images';
+import { MathController } from './math';
 
 /* Document HTML is sanitized in Rust; generated SVG is sanitized separately. */
 const { invoke } = window.__TAURI__.core;
@@ -23,7 +24,8 @@ const fileDetail = requireElement('#file-detail', HTMLElement);
 const modifier = requireElement('#modifier', HTMLElement);
 const diagrams = new MermaidController(article);
 const images = new LocalImageController(article, reader);
-window.addEventListener('pagehide', () => { diagrams.dispose(); images.dispose(); });
+const math = new MathController(article);
+window.addEventListener('pagehide', () => { diagrams.dispose(); images.dispose(); math.dispose(); });
 let requestId = 0;
 let choosing = false;
 
@@ -65,6 +67,7 @@ async function openDocument(operation: () => Promise<RenderedDocument | null>): 
     prepareDocument();
     const loadImages = images.prepare(doc.id);
     const renderDiagrams = diagrams.prepare();
+    const renderMath = math.prepare();
     article.hidden = false;
     empty.hidden = true;
     reader.scrollTop = 0;
@@ -80,6 +83,7 @@ async function openDocument(operation: () => Promise<RenderedDocument | null>): 
       // A canceled/failed opening keeps this visible document's resources alive.
       loadImages();
       renderDiagrams();
+      renderMath();
       if (!paint) return;
       try {
         const elapsed = await paint;

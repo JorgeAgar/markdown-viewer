@@ -62,9 +62,9 @@ flowchart LR
 
 `html::push_html` convierte esos eventos en HTML. Por ejemplo, `# Hola` produce `<h1>Hola</h1>`. Después, la limpieza decide qué etiquetas, atributos y direcciones pueden conservarse.
 
-Activamos explícitamente tablas, texto tachado, listas de tareas y notas al pie. La base del parser es CommonMark, pero no hemos pasado toda su suite de conformidad contra el visor. La limpieza y las restricciones de recursos también pueden cambiar el resultado visible.
+Activamos explícitamente tablas, texto tachado, listas de tareas, notas al pie y fórmulas matemáticas. La base del parser es CommonMark, pero no hemos pasado toda su suite de conformidad contra el visor. La limpieza y las restricciones de recursos también pueden cambiar el resultado visible.
 
-Rust conserva Mermaid como código escapado con la clase `language-mermaid`. La interfaz lo convierte después en un diagrama SVG y limpia ese resultado por separado. Las fórmulas no tienen un renderizador y los lenguajes de los bloques no reciben colores de sintaxis.
+Rust conserva Mermaid como código escapado con la clase `language-mermaid`. La interfaz lo convierte después en un diagrama SVG y limpia ese resultado por separado. Las fórmulas `$…$` y `$$…$$` se conservan como TeX escapado en `span.math.math-inline` y `span.math.math-display`. KaTeX las renderiza después del primer pintado; consulta [LaTeX](latex.md). Los lenguajes de los bloques no reciben colores de sintaxis.
 
 ## 4. Cómo encuentra las imágenes
 
@@ -113,7 +113,7 @@ Si una imagen no existe o no cumple las reglas, la solicitud devuelve un error y
 
 ## 6. Qué elimina la limpieza de HTML
 
-`ammonia` usa su lista de etiquetas y atributos permitidos como base. Nuestra configuración añade los atributos de las casillas de tareas, la alineación de celdas y los identificadores `id`. Permite solo la clase `language-mermaid` en `code` para que la interfaz identifique esos bloques; no permite clases arbitrarias del documento.
+`ammonia` usa su lista de etiquetas y atributos permitidos como base. Nuestra configuración añade los atributos de las casillas de tareas, la alineación de celdas y los identificadores `id`. Permite solo la clase `language-mermaid` en `code` y las clases `math`, `math-inline` y `math-display` en `span` para que la interfaz identifique esos elementos; no permite clases arbitrarias del documento.
 
 Los scripts y atributos activos como `onerror` se eliminan. Los esquemas de URL admitidos por la limpieza son `http`, `https`, `mailto` y `data`. Para direcciones relativas, `relative_url` conserva únicamente las que empiezan por `#`.
 

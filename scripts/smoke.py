@@ -84,6 +84,9 @@ with tempfile.TemporaryDirectory(prefix="markdown-viewer-smoke-") as temporary:
         execute("document.querySelector('#reader').scrollTop = 0")
         screenshot("viewer.png")
         print("PASS: CLI startup, Markdown, table, anchors, disabled tasks, local image")
+        assert execute("return document.querySelector('link[href*=\"katex\"]') === null")
+        assert execute("return !performance.getEntriesByType('resource').some(entry => /math-runtime|katex/.test(entry.name))")
+        print("PASS: plain Markdown does not load the math renderer, styles or fonts")
 
         before = fixture.read_bytes()
         subprocess.run([str(BINARY), str(fixture)], check=True, timeout=10)
@@ -149,6 +152,33 @@ with tempfile.TemporaryDirectory(prefix="markdown-viewer-smoke-") as temporary:
         assert execute("return [...document.querySelectorAll('.local-image-placeholder')].map(el => el.textContent)") == ["Ausente", "Grande"]
         assert execute("return document.querySelector('#error').hidden")
         print("PASS: text paints before controlled local reads; later Unicode image loads; missing and oversized images keep alt text")
+
+        execute("""
+            window.mathCspViolations = [];
+            document.addEventListener('securitypolicyviolation', event => {
+                window.mathCspViolations.push({directive: event.violatedDirective, blocked: event.blockedURI});
+            });
+        """)
+        subprocess.run([str(BINARY), str(ROOT / "examples/latex.md")], check=True, timeout=10)
+        wait_for(lambda: execute("return document.querySelector('#filename').textContent === 'latex.md'"))
+        wait_for(lambda: execute("return document.querySelector('#document').dataset.mathReadyMs"))
+        states = execute("return [...document.querySelectorAll('.math')].map(el => el.dataset.mathState)")
+        assert states == ["ready"] * 7 + ["error", "error", "ready"], states
+        assert execute("return document.querySelectorAll('.math math annotation[encoding=\"application/x-tex\"]').length") == 8
+        assert execute("return document.querySelector('.math script, .math img, .math a, .math foreignObject') === null")
+        assert execute("return [...document.querySelectorAll('.math .katex')].every(el => el.getBoundingClientRect().width > 0)")
+        assert execute("return [...document.querySelectorAll('.math .frac-line')].every(el => parseFloat(getComputedStyle(el).borderBottomWidth) > 0)")
+        assert execute_async("""
+            const done = arguments[arguments.length - 1];
+            document.fonts.ready.then(() => done(document.fonts.check('16px KaTeX_Main')));
+        """)
+        assert execute("return [...document.fonts].some(font => font.family === 'KaTeX_Main' && font.status === 'loaded')")
+        assert execute("return document.querySelectorAll('link[href*=\"katex\"]').length") == 1
+        assert execute("return window.mathCspViolations") == []
+        assert execute("return document.querySelector('#document code').textContent") == "$x^2$"
+        execute("document.querySelector('#reader').scrollTop = 0")
+        screenshot("latex.png")
+        print("PASS: real KaTeX fractions, roots, matrices, aligned equations, MathML, local fonts, literal code, isolated errors and CSP")
 
         execute("""
             window.mermaidCspViolations = [];

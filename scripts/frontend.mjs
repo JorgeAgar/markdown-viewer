@@ -1,9 +1,10 @@
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, rmSync, watch } from 'node:fs';
+import { copyFileSync, cpSync, mkdirSync, rmSync, watch } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import { mermaidCspPlugin } from './mermaid-build.mjs';
+import { katexCspPlugin } from './katex-build.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const source = join(root, 'src');
@@ -11,9 +12,14 @@ const output = join(root, 'dist');
 const compiler = join(dirname(fileURLToPath(import.meta.resolve('typescript/package.json'))), 'bin', 'tsc');
 const watching = process.argv.includes('--watch');
 const assets = ['index.html', 'style.css'];
+const katexDist = dirname(fileURLToPath(import.meta.resolve('katex')));
 
 function copyAssets() {
   for (const asset of assets) copyFileSync(join(source, asset), join(output, asset));
+  mkdirSync(join(output, 'katex'), { recursive: true });
+  copyFileSync(join(katexDist, 'katex.min.css'), join(output, 'katex/katex.min.css'));
+  cpSync(join(katexDist, 'fonts'), join(output, 'katex/fonts'), { recursive: true, filter: path => !/\.(?:ttf|woff)$/.test(path) });
+  copyFileSync(join(katexDist, '../LICENSE'), join(output, 'katex/LICENSE'));
 }
 
 // A release build always starts clean so deleted sources cannot remain bundled.
@@ -33,7 +39,7 @@ async function compile() {
     platform: 'browser',
     target: 'es2020',
     minify: !watching,
-    plugins: [mermaidCspPlugin()],
+    plugins: [mermaidCspPlugin(), katexCspPlugin()],
   });
 }
 await compile();
@@ -70,6 +76,7 @@ if (watching) {
     }),
     watch(join(root, 'tsconfig.json'), scheduleCompile),
     watch(join(root, 'scripts/mermaid-build.mjs'), scheduleCompile),
+    watch(join(root, 'scripts/katex-build.mjs'), scheduleCompile),
   ];
   console.log('Watching for file changes.');
   for (const signal of ['SIGINT', 'SIGTERM']) {
