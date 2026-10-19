@@ -1,4 +1,6 @@
 const MAX_ACTIVE = 2;
+let active = 0;
+const waiting = new Set<LocalImageController>();
 const DATA_IMAGE = /^data:image\/(png|jpeg|gif|webp|avif|svg\+xml);base64,/;
 
 interface ImageJob {
@@ -11,7 +13,6 @@ interface ImageJob {
 
 export class LocalImageController {
   private generation = 0;
-  private active = 0;
   private pending: ImageJob[] = [];
   private remaining = 0;
   private started = 0;
@@ -21,6 +22,7 @@ export class LocalImageController {
   dispose(): void {
     this.generation++;
     this.pending = [];
+    waiting.delete(this);
     this.remaining = 0;
   }
 
@@ -28,7 +30,7 @@ export class LocalImageController {
     this.dispose();
     delete this.article.dataset.imagesResolvedMs;
     const generation = this.generation;
-    // Only a response accepted by the UI may replace Rust's active references.
+    // Only a tab accepted by the UI may retain Rust's image references.
     const activation = window.__TAURI__.core.invoke('activate_document_images', { documentId })
       .then(() => true, () => false);
     const jobs: ImageJob[] = [];
@@ -82,12 +84,14 @@ export class LocalImageController {
       return bounds.bottom >= viewport.top && bounds.top <= viewport.bottom ? 0 : 1;
     };
     this.pending.sort((a, b) => visible(a) - visible(b));
-    while (this.active < MAX_ACTIVE && this.pending.length) {
+    waiting.add(this);
+    while (active < MAX_ACTIVE && this.pending.length) {
       const job = this.pending.shift()!;
       if (!this.current(job)) continue;
-      this.active++;
+      active++;
       void this.resolve(job);
     }
+    if (!this.pending.length) waiting.delete(this);
   }
 
   private async resolve(job: ImageJob): Promise<void> {
@@ -113,9 +117,9 @@ export class LocalImageController {
         job.placeholder.textContent = job.image.alt || 'Imagen no disponible';
       }
     } finally {
-      this.active--;
+      active--;
       if (job.generation === this.generation) this.remaining--;
-      this.pump();
+      for (const controller of waiting) controller.pump();
       if (job.generation === this.generation && !this.remaining) {
         // Resolution means Rust completed reads/encoding, not WebView decoding.
         this.article.dataset.imagesResolvedMs = (performance.now() - this.started).toFixed(2);

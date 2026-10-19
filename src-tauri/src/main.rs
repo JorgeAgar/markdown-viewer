@@ -56,15 +56,31 @@ async fn load_document(app: tauri::AppHandle, path: PathBuf) -> Result<document:
         .await
         .map_err(|_| "No se pudo procesar el documento.".to_owned())??;
     let document = app.state::<Viewer>().images.lock().unwrap().publish(loaded);
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.set_title(&format!("{} · Markdown Viewer", document.name));
-    }
     Ok(document)
 }
 
 #[tauri::command]
 fn activate_document_images(state: State<'_, Viewer>, document_id: String) -> Result<(), String> {
     state.images.lock().unwrap().activate(&document_id)
+}
+
+#[tauri::command]
+fn close_document(state: State<'_, Viewer>, document_id: String) {
+    state.images.lock().unwrap().close(&document_id);
+}
+
+#[tauri::command]
+fn set_document_title(app: tauri::AppHandle, name: Option<String>) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("main") {
+        let title = name.map_or_else(
+            || "Markdown Viewer".to_owned(),
+            |name| format!("{name} · Markdown Viewer"),
+        );
+        window
+            .set_title(&title)
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -178,6 +194,8 @@ fn main() {
             open_document,
             choose_document,
             activate_document_images,
+            close_document,
+            set_document_title,
             resolve_document_image,
             open_link,
             content_painted

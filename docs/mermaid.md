@@ -76,7 +76,7 @@ en una apertura posterior.
 El controlador serializa los diagramas y cede el turno al navegador entre
 bloques. Una generación identifica el documento visible y el tema. Antes y
 después de cada espera comprueba esa generación y que el bloque siga conectado.
-Si se abre otro documento o cambia el tema, los resultados anteriores no se
+Cada pestaña conserva su controlador y sus diagramas al abrir otro documento. Si se cierra la pestaña o cambia el tema, los resultados anteriores no se
 insertan. Las peticiones de apertura tienen un contador diferente: cancelar el
 selector o fallar al abrir un archivo conserva el renderizado del documento que
 sigue visible.

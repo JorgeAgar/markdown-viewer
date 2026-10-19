@@ -28,7 +28,7 @@ class TauriController {
         const { promise, resolve, reject } = Promise.withResolvers<ViewerCommands[K]['result']>();
         const call = { command, args: args[0], resolve, reject };
         this.calls.push(call);
-        if (command === 'activate_document_images' && !this.holdActivation) {
+        if (command === 'close_document' || command === 'set_document_title' || (command === 'activate_document_images' && !this.holdActivation)) {
           resolve(null as ViewerCommands[K]['result']);
           return promise;
         }
@@ -398,7 +398,7 @@ test('visible local images are requested before images outside the reader viewpo
   await settle();
 });
 
-test('changing documents discards old image responses and queued reads, with a global concurrency limit', async t => {
+test('closing a tab discards its image responses and queued reads, with a global concurrency limit', async t => {
   const viewer = await createViewer(t);
   await viewer.load(illustrated('3', 3));
   await viewer.paint();
@@ -406,6 +406,7 @@ test('changing documents discards old image responses and queued reads, with a g
   const oldFirst = viewer.tauri.take('resolve_document_image');
   const oldSecond = viewer.tauri.take('resolve_document_image');
   await viewer.load(illustrated('4', 2));
+  viewer.element('tabs').querySelector<HTMLButtonElement>('.tab-close')!.click();
   await viewer.paint();
   viewer.tauri.take('content_painted').resolve(30);
   assert.equal(viewer.tauri.pending.length, 0, 'New reads wait for old reads to release the two slots');
@@ -596,3 +597,199 @@ for (const outcome of ['cancel', 'error'] as const) {
     assert.equal(viewer.element('document').querySelector('code')?.textContent, source);
   });
 }
+
+
+test('each picker selection adds a tab; the strip only appears with multiple files', async t => {
+  const viewer = await createViewer(t);
+  assert.equal(viewer.element('tabs').hidden, true);
+  for (const name of ['one.md', 'two.md']) {
+    viewer.element<HTMLButtonElement>('open').click();
+    viewer.tauri.take('choose_document').resolve(rendered(name));
+    await settle();
+    viewer.assertDocument(rendered(name));
+    assert.equal(viewer.element('tabs').hidden, name === 'one.md');
+  }
+  const buttons = [...viewer.element('tabs').querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+  assert.deepEqual(buttons.map(button => button.textContent), ['one.md', 'two.md']);
+  assert.deepEqual(buttons.map(button => button.getAttribute('aria-selected')), ['false', 'true']);
+  assert.deepEqual(buttons.map(button => button.tabIndex), [-1, 0]);
+  buttons.forEach(button => {
+    const panel = viewer.element(button.getAttribute('aria-controls')!);
+    assert.equal(panel.getAttribute('role'), 'tabpanel');
+    assert.equal(panel.getAttribute('aria-labelledby'), button.id);
+  });
+});
+
+test('switching tabs preserves their DOM, scroll and window title without reopening files', async t => {
+  const viewer = await createViewer(t);
+  await viewer.load(rendered('one.md'));
+  const first = viewer.element('document');
+  viewer.element('reader').scrollTop = 123;
+  await viewer.load(rendered('two.md'));
+  const second = viewer.element('document');
+  viewer.element('reader').scrollTop = 456;
+  const buttons = [...viewer.element('tabs').querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+  buttons[0]!.click();
+  viewer.assertDocument(rendered('one.md'));
+  assert.equal(viewer.element('document'), first);
+  assert.equal(viewer.element('reader').scrollTop, 123);
+  assert.equal(second.hidden, true);
+  buttons[1]!.click();
+  viewer.assertDocument(rendered('two.md'));
+  assert.equal(viewer.element('document'), second);
+  assert.equal(viewer.element('reader').scrollTop, 456);
+  assert.equal(viewer.tauri.calls.filter(call => call.command === 'open_document').length, 2);
+  assert.deepEqual(viewer.tauri.calls.filter(call => call.command === 'set_document_title').map(call => (call.args as { name: string }).name),
+    ['one.md', 'two.md', 'one.md', 'two.md']);
+});
+
+test('closing active and inactive tabs selects a neighbor and returns to an empty view', async t => {
+  const viewer = await createViewer(t);
+  for (const name of ['one.md', 'two.md', 'three.md']) await viewer.load(rendered(name));
+  const first = viewer.element('tabs').querySelector<HTMLButtonElement>('.tab-close')!;
+  first.click();
+  viewer.assertDocument(rendered('three.md'));
+  assert.equal(viewer.element('tabs').querySelectorAll('[role="tab"]').length, 2);
+  assert.equal(viewer.keyboard('w', { ctrlKey: true }).defaultPrevented, true);
+  viewer.assertDocument(rendered('two.md'));
+  assert.equal(viewer.element('tabs').hidden, true);
+  assert.equal(viewer.element('document').getAttribute('aria-labelledby'), null);
+  assert.equal(viewer.keyboard('w', { metaKey: true }).defaultPrevented, true);
+  assert.equal(viewer.element('document').hidden, true);
+  assert.equal(viewer.element('empty').hidden, false);
+  assert.equal(viewer.element('filename').textContent, 'Markdown Viewer');
+  assert.equal(viewer.element('status').textContent, 'Listo para leer');
+  assert.equal(viewer.element('tabs').children.length, 0);
+  assert.equal(viewer.window.document.querySelectorAll('article').length, 1);
+  assert.deepEqual(viewer.tauri.calls.filter(call => call.command === 'close_document').map(call => (call.args as { documentId: string }).documentId),
+    ['one.md', 'three.md', 'two.md']);
+  await viewer.load(rendered('again.md'));
+  viewer.assertDocument(rendered('again.md'));
+  assert.equal(viewer.element('tabs').hidden, true);
+});
+
+test('tab keyboard navigation wraps, supports Home/End and keeps focus after Delete', async t => {
+  const viewer = await createViewer(t);
+  for (const name of ['one.md', 'two.md', 'three.md']) await viewer.load(rendered(name));
+  const buttons = [...viewer.element('tabs').querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+  function key(key: string) {
+    const event = new viewer.window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+    viewer.window.document.activeElement!.dispatchEvent(event);
+    assert.equal(event.defaultPrevented, true);
+  }
+  buttons[2]!.click();
+  key('ArrowRight');
+  viewer.assertDocument(rendered('one.md'));
+  assert.equal(viewer.window.document.activeElement, buttons[0]);
+  key('ArrowLeft');
+  viewer.assertDocument(rendered('three.md'));
+  key('Home');
+  viewer.assertDocument(rendered('one.md'));
+  key('End');
+  viewer.assertDocument(rendered('three.md'));
+  key('Delete');
+  viewer.assertDocument(rendered('two.md'));
+  assert.equal(viewer.window.document.activeElement, buttons[1]);
+  key('Delete');
+  viewer.assertDocument(rendered('one.md'));
+  assert.equal(viewer.window.document.activeElement, viewer.element('reader'));
+});
+
+test('Ctrl+PageDown and Ctrl+PageUp cycle tabs from the reader or tab strip', async t => {
+  const viewer = await createViewer(t);
+  assert.equal(viewer.keyboard('PageDown', { ctrlKey: true }).defaultPrevented, false);
+  await viewer.load(rendered('one.md'));
+  assert.equal(viewer.keyboard('PageUp', { ctrlKey: true }).defaultPrevented, false);
+  viewer.element('reader').scrollTop = 123;
+  await viewer.load(rendered('two.md'));
+  await viewer.load(rendered('three.md'));
+  assert.equal(viewer.keyboard('PageDown').defaultPrevented, false);
+  viewer.assertDocument(rendered('three.md'));
+  assert.equal(viewer.keyboard('PageDown', { ctrlKey: true }).defaultPrevented, true);
+  viewer.assertDocument(rendered('one.md'));
+  assert.equal(viewer.element('reader').scrollTop, 123);
+  assert.equal(viewer.window.document.activeElement, viewer.element('reader'));
+  assert.equal(viewer.keyboard('PageDown', { ctrlKey: true }).defaultPrevented, true);
+  viewer.assertDocument(rendered('two.md'));
+  assert.equal(viewer.keyboard('PageUp', { ctrlKey: true }).defaultPrevented, true);
+  viewer.assertDocument(rendered('one.md'));
+  viewer.element('tabs').querySelector<HTMLButtonElement>('[role="tab"]')!.focus();
+  assert.equal(viewer.keyboard('PageUp', { ctrlKey: true }).defaultPrevented, true);
+  viewer.assertDocument(rendered('three.md'));
+  assert.equal(viewer.window.document.activeElement,
+    viewer.element('tabs').querySelector('[aria-selected="true"]'));
+});
+
+test('background image reads remain valid when switching tabs and share two slots', async t => {
+  const viewer = await createViewer(t);
+  await viewer.load(illustrated('11', 3));
+  await viewer.paint();
+  viewer.tauri.take('content_painted').resolve(20);
+  const oldFirst = viewer.tauri.take('resolve_document_image');
+  const oldSecond = viewer.tauri.take('resolve_document_image');
+  await viewer.load(illustrated('12'));
+  await viewer.paint();
+  viewer.tauri.take('content_painted').resolve(30);
+  assert.equal(viewer.tauri.pending.length, 0);
+  oldFirst.resolve(imageData);
+  oldSecond.resolve(imageData);
+  await settle();
+  const third = viewer.tauri.take('resolve_document_image');
+  const next = viewer.tauri.take('resolve_document_image');
+  assert.equal(third.args.documentId, '11');
+  assert.equal(next.args.documentId, '12');
+  third.resolve(imageData);
+  next.resolve(imageData);
+  await settle();
+  viewer.element('tabs').querySelector<HTMLButtonElement>('[role="tab"]')!.click();
+  assert.equal(viewer.element('document').querySelectorAll('img').length, 3);
+  assert.equal(viewer.tauri.calls.filter(call => call.command === 'activate_document_images').length, 2);
+});
+
+test('a tab hidden before paint defers heavy work until it is selected again', async t => {
+  const viewer = await createViewer(t);
+  await viewer.load(illustrated('13'));
+  await viewer.load(rendered('text.md'));
+  await viewer.paint();
+  viewer.tauri.take('content_painted').resolve(20);
+  assert.equal(viewer.tauri.calls.some(call => call.command === 'resolve_document_image'), false);
+  viewer.element('tabs').querySelector<HTMLButtonElement>('[role="tab"]')!.click();
+  await viewer.paint();
+  viewer.tauri.take('resolve_document_image').resolve(imageData);
+  await settle();
+  assert.equal(viewer.element('document').querySelectorAll('img').length, 1);
+});
+
+test('fragment links stay inside the active tab when documents share heading IDs', async t => {
+  const viewer = await createViewer(t);
+  const doc = { ...rendered('one.md'), html: '<h1 id="same">Heading</h1><a href="#same">Go</a>' };
+  await viewer.load(doc);
+  const firstHeading = viewer.element('document').querySelector<HTMLElement>('h1')!;
+  firstHeading.scrollIntoView = () => assert.fail('Scrolled to an inactive tab');
+  await viewer.load({ ...doc, id: 'two', name: 'two.md', path: '/documents/two.md' });
+  let scrolled = false;
+  viewer.element('document').querySelector<HTMLElement>('h1')!.scrollIntoView = () => { scrolled = true; };
+  viewer.element('document').querySelector<HTMLAnchorElement>('a')!.click();
+  assert.equal(scrolled, true);
+});
+
+
+test('rendered code remains in its original tab and is reused on return', async t => {
+  const viewer = await createViewer(t);
+  const pending = Promise.withResolvers<string>();
+  viewer.window.__renderCodeForTests = () => pending.promise;
+  await viewer.load({ ...rendered('code.md'), html: '<pre><code class="language-ts">const x = 1;</code></pre>' });
+  await viewer.paint();
+  viewer.tauri.take('content_painted').resolve(12);
+  await viewer.load(rendered('plain.md'));
+  pending.resolve('<span class="hljs-keyword">const</span> x = 1;');
+  await settle();
+  viewer.assertDocument(rendered('plain.md'));
+  viewer.element('tabs').querySelector<HTMLButtonElement>('[role="tab"]')!.click();
+  const code = viewer.element('document').querySelector<HTMLElement>('code')!;
+  assert.equal(code.dataset.syntaxState, 'ready');
+  assert.equal(code.querySelector('.hljs-keyword')?.textContent, 'const');
+  await viewer.paint();
+  assert.equal(viewer.window.__syntaxLoads, 1);
+  assert.equal(viewer.element('document').querySelector('code'), code);
+});

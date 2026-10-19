@@ -38,7 +38,7 @@ El estado `Viewer` tiene estos datos:
 
 `pending` está protegido por un `Mutex`, que permite modificarlo desde distintos manejadores sin acceder a la vez. `measured` usa un valor atómico, que puede consultarse y cambiarse de forma segura en una sola operación.
 
-El estado guarda también un `ImageStore` con la carpeta canónica, las referencias de imágenes y el presupuesto de la apertura vigente. No guarda el HTML del documento abierto. Ese contenido queda en la [interfaz](interfaz.md). Tampoco guarda un historial en disco.
+El estado guarda también un `ImageStore` con la carpeta canónica, las referencias de imágenes y el presupuesto de cada pestaña abierta, además de una apertura candidata. No guarda el HTML del documento abierto. Ese contenido queda en la [interfaz](interfaz.md). Tampoco guarda un historial en disco.
 
 ## 3. Los comandos disponibles
 
@@ -49,7 +49,9 @@ JavaScript llama a estas funciones mediante `invoke`. Tauri transporta los argum
 | `open_document` | Una ruta. | Un documento o un error. |
 | `choose_document` | Sin argumentos propios. | Un documento, ningún documento si se cancela, o un error. |
 | `take_pending_document` | Sin argumentos propios. | Carga la ruta pendiente; si no hay ruta, devuelve ningún documento. |
-| `activate_document_images` | Identificador de la apertura aceptada por la interfaz. | Activa sus referencias e invalida las anteriores, o devuelve un error. |
+| `activate_document_images` | Identificador de la apertura aceptada por la interfaz. | Conserva sus referencias hasta cerrar esa pestaña, o devuelve un error. |
+| `close_document` | Identificador de la pestaña cerrada. | Libera sus referencias de imágenes. |
+| `set_document_title` | Nombre de la pestaña activa o `null`. | Actualiza el título nativo de la ventana. |
 | `resolve_document_image` | Identificador de apertura e índice de imagen. | Datos Base64 o un error de esa imagen. |
 | `open_link` | Una dirección `href`. | Confirma que pudo pedir al sistema abrirla, o devuelve un error. |
 | `content_painted` | Si se mostró un documento. | Milisegundos desde el inicio y, en modo de medición, acciones adicionales. |
@@ -101,9 +103,9 @@ En macOS, el manejador de `RunEvent::Opened` convierte las direcciones recibidas
 
 ## 6. Qué límites tiene la coordinación actual
 
-Hay una sola ruta pendiente, sin una cola de documentos. Una ruta nueva puede reemplazar a otra que todavía no se haya recogido. Este diseño corresponde a una ventana que muestra un archivo a la vez.
+Hay una sola ruta pendiente, sin una cola de documentos. Una ruta nueva puede reemplazar a otra que todavía no se haya recogido. Las aperturas aceptadas se conservan en pestañas, pero esta ruta pendiente todavía no es una cola.
 
-La interfaz descarta respuestas antiguas mediante `requestId`, pero Rust no cancela las cargas anteriores. Además, el título nativo se actualiza al terminar cada carga, antes de que JavaScript compruebe ese contador. Con aperturas simultáneas, el título podría terminar indicando un archivo distinto al contenido visible.
+La interfaz descarta respuestas antiguas mediante `requestId`, pero Rust no cancela las cargas anteriores. El título nativo se actualiza mediante `set_document_title` cuando JavaScript selecciona una pestaña; una carga descartada no modifica el título.
 
 Una segunda apertura sin archivo solo enfoca la ventana. Al cerrarla termina la aplicación; no mantenemos un proceso residente.
 

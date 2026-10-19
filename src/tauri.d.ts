@@ -13,6 +13,8 @@ interface ViewerCommands {
   open_document: { args: { path: string }; result: RenderedDocument };
   choose_document: { args: undefined; result: RenderedDocument | null };
   activate_document_images: { args: { documentId: string }; result: null };
+  close_document: { args: { documentId: string }; result: null };
+  set_document_title: { args: { name: string | null }; result: null };
   resolve_document_image: { args: { documentId: string; imageId: number }; result: string };
   open_link: { args: { href: string }; result: null };
   content_painted: { args: { hasDocument: boolean }; result: number };
