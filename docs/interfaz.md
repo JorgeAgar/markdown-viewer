@@ -37,7 +37,9 @@ HTML define los elementos, CSS decide cómo se ven y JavaScript actualiza su con
 
 El elemento `#reader` es la zona que se desplaza cuando lees. Dentro están `#empty`, con la invitación a abrir un archivo, y `#document`, donde aparece el contenido.
 
-Al iniciar sin archivo, `#empty` está visible y `#document` oculto. Al cargar un documento válido, JavaScript intercambia su visibilidad. La barra superior muestra el nombre, el tamaño y la ruta completa como texto emergente al situar el cursor sobre el nombre.
+Al iniciar sin archivo, `#empty` está visible y `#document` oculto. Al cargar un documento válido, JavaScript intercambia su visibilidad. Cada archivo se abre en una pestaña nueva; `#document` identifica el artículo activo y los demás artículos permanecen ocultos. Cada pestaña conserva su DOM, sus controladores de renderizado y su posición de lectura. La barra `#tabs` mide 32 px y se oculta con cero o una pestaña. Al seleccionar una pestaña se actualiza también el título de la ventana. El botón ×, el clic central y `Ctrl+W` / `⌘W` cierran pestañas y liberan sus recursos; `Ctrl+AvPág` y `Ctrl+RePág` cambian de pestaña desde cualquier parte de la ventana, recorriéndolas de forma circular. Las flechas, Inicio, Fin y Suprimir permiten navegar y cerrar desde el teclado al enfocar la barra.
+
+La barra superior muestra el nombre, el tamaño y la ruta completa como texto emergente al situar el cursor sobre el nombre.
 
 El atributo HTML `hidden` controla qué elementos aparecen. La regla CSS `[hidden]` hace que los elementos ocultos no ocupen espacio, incluso si otra regla les asigna una distribución como `flex`.
 
@@ -73,13 +75,13 @@ Si el resultado es `null`, la persona canceló el selector o no había archivo p
 
 ## 4. Qué ocurre con errores y aperturas simultáneas
 
-Durante una carga, el contenido anterior permanece visible. La interfaz solo lo reemplaza después de recibir un nuevo documento válido.
+Durante una carga, el contenido anterior permanece visible. La interfaz solo activa una pestaña nueva después de recibir un nuevo documento válido.
 
 ```mermaid
 flowchart TD
     Peticion["Se pide abrir un documento"] --> Espera["Conserva la vista y muestra Abriendo"]
     Espera --> Resultado{"¿Qué devuelve la operación?"}
-    Resultado -->|"Documento"| Mostrar["Reemplaza el contenido y vuelve al inicio"]
+    Resultado -->|"Documento"| Mostrar["Abre una pestaña nueva y vuelve al inicio"]
     Resultado -->|"Sin documento"| Conservar["Conserva la vista actual"]
     Resultado -->|"Error"| Error["Conserva la vista y muestra el error"]
 ```
@@ -104,7 +106,7 @@ La lectura inicial del archivo pendiente tampoco puede reemplazar una apertura p
 
 Un encabezado `## Cómo abrir` obtiene el identificador `cómo-abrir`. Otro encabezado igual obtiene `cómo-abrir-1`. Los identificadores existentes se conservan, aunque el contador de duplicados solo incluye los que genera esta función.
 
-Las imágenes deben usar HTTPS, datos Base64 de un formato admitido o un marcador local del documento recibido. Los demás orígenes pierden `src`. Los marcadores locales se solicitan después del primer pintado, con prioridad para los visibles y hasta dos solicitudes pendientes. La cola comprueba la generación visible antes de insertar cada resultado; cancelar un selector conserva la cola del documento anterior. Los errores de lectura o decodificación conservan el texto alternativo. Consulta [Imágenes locales](imagenes-locales.md).
+Las imágenes deben usar HTTPS, datos Base64 de un formato admitido o un marcador local del documento recibido. Los demás orígenes pierden `src`. Los marcadores locales se solicitan después del primer pintado, con prioridad para los visibles y hasta dos solicitudes pendientes. Las colas comparten un máximo de dos solicitudes entre todas las pestañas y comprueban la generación de cada pestaña antes de insertar cada resultado; cancelar un selector conserva la cola del documento anterior. Los errores de lectura o decodificación conservan el texto alternativo. Consulta [Imágenes locales](imagenes-locales.md).
 
 El HTML se inserta con `innerHTML` porque tiene etiquetas que el WebView debe interpretar. El nombre del archivo y los errores usan `textContent`, que los muestra como texto. La limpieza previa en Rust es parte necesaria del recorrido del HTML.
 
@@ -116,9 +118,9 @@ Mermaid se carga en un módulo local diferido. Cada SVG se limpia antes de inser
 
 ## 6. Cómo funcionan los enlaces y el diseño
 
-La interfaz escucha los clics en el artículo, incluidos los clics con el botón central. Impide la navegación automática del WebView y decide qué hacer con el destino.
+La interfaz escucha los clics en la zona de lectura, incluidos los clics con el botón central. Impide la navegación automática del WebView y decide qué hacer con el destino.
 
-Un enlace `#seccion` desplaza la lectura hacia el elemento con ese identificador. Un enlace web o de correo llama a `open_link`; Rust valida la dirección y la abre con el sistema. Los demás destinos no se abren.
+Un enlace `#seccion` desplaza la lectura hacia el elemento con ese identificador dentro de la pestaña activa. Un enlace web o de correo llama a `open_link`; Rust valida la dirección y la abre con el sistema. Los demás destinos no se abren.
 
 CSS usa fuentes del sistema, un ancho máximo de lectura de 780 píxeles y desplazamiento horizontal dentro de tablas o bloques de código grandes. Las imágenes se ajustan al ancho disponible. El tema oscuro depende de `prefers-color-scheme`, por lo que sigue la preferencia del sistema sin un control propio.
 

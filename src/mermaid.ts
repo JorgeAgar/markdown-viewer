@@ -29,7 +29,7 @@ export function validateMermaidSource(source: string): void {
   }
 }
 
-/** Coordinates only the visible document. Opening requests have a separate id. */
+/** Coordinates one open tab. Opening requests have a separate id. */
 export class MermaidController {
   private generation = 0;
   private blocks: DiagramBlock[] = [];

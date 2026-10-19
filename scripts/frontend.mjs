@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, cpSync, mkdirSync, rmSync, watch } from 'node:fs';
+import { copyFileSync, cpSync, mkdirSync, readdirSync, rmSync, watch } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
@@ -22,10 +22,13 @@ function copyAssets() {
   copyFileSync(join(katexDist, '../LICENSE'), join(output, 'katex/LICENSE'));
 }
 
-// A release build always starts clean so deleted sources cannot remain bundled.
-// Development preserves the initial build prepared before Tauri starts.
-if (!watching) rmSync(output, { recursive: true, force: true });
+// Clean old assets without replacing the directory: Tauri's dev server watches
+// this directory, and deleting it breaks reloads when tests/builds run during dev.
+// Watch mode preserves the initial build prepared before Tauri starts.
 mkdirSync(output, { recursive: true });
+if (!watching) {
+  for (const entry of readdirSync(output)) rmSync(join(output, entry), { recursive: true, force: true });
+}
 async function compile() {
   execFileSync(process.execPath, [compiler, '--project', join(root, 'tsconfig.json')], { cwd: root, stdio: 'inherit' });
   await build({
