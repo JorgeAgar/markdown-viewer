@@ -11,7 +11,7 @@
     "build:arch": "pnpm build:binary && pnpm package:arch",
     "package:arch": "node scripts/package-arch.mjs",
     "test": "pnpm test:release && pnpm check:ipc && pnpm test:frontend && cargo test --manifest-path src-tauri/Cargo.toml",
-    "check": "pnpm check:version && pnpm check:ipc && pnpm build:frontend && node --check scripts/frontend.mjs && node --check scripts/package-arch.mjs && cargo fmt --manifest-path scripts/ipc-contract/Cargo.toml -- --check && cargo fmt --manifest-path src-tauri/Cargo.toml -- --check && cargo clippy --manifest-path scripts/ipc-contract/Cargo.toml --all-targets -- -D warnings && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
+    "check": "pnpm check:version && pnpm check:e2e && pnpm check:ipc && pnpm build:frontend && node --check scripts/frontend.mjs && node --check scripts/package-arch.mjs && cargo fmt --manifest-path scripts/ipc-contract/Cargo.toml -- --check && cargo fmt --manifest-path src-tauri/Cargo.toml -- --check && cargo clippy --manifest-path scripts/ipc-contract/Cargo.toml --all-targets -- -D warnings && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
     "benchmark": "node scripts/benchmark.mjs",
     "build:frontend": "node scripts/frontend.mjs",
     "watch:frontend": "node scripts/frontend.mjs --watch",
@@ -20,17 +20,29 @@
     "generate:ipc": "cargo run --locked --manifest-path scripts/ipc-contract/Cargo.toml -- --write",
     "test:frontend": "pnpm build:frontend && node scripts/test-frontend.mjs && tsc --project tsconfig.tests.json && node --test tests/*.test.ts",
     "check:version": "node scripts/check-version.mjs",
-    "test:release": "node --test scripts/check-version.test.mjs"
+    "test:release": "node --test scripts/check-version.test.mjs",
+    "test:e2e": "node scripts/e2e.mjs",
+    "check:e2e": "tsc --project tsconfig.e2e.json && node --check scripts/e2e.mjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.12.1",
     "@types/css-tree": "3.2.0",
     "@types/jsdom": "30.0.0",
+    "@types/mocha": "10.0.10",
     "@types/node": "24.19.0",
+    "@wdio/cli": "9.32.0",
+    "@wdio/globals": "9.31.3",
+    "@wdio/local-runner": "9.32.0",
+    "@wdio/mocha-framework": "9.32.0",
+    "@wdio/spec-reporter": "9.32.0",
+    "@wdio/types": "9.32.0",
     "esbuild": "0.28.2",
+    "expect-webdriverio": "6.1.0",
     "jsdom": "30.1.1",
+    "tsx": "4.23.15",
     "type-fest": "5.10.0",
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "webdriverio": "9.32.0"
   },
   "dependencies": {
     "css-tree": "3.2.1",
