@@ -4,7 +4,15 @@ import type { DiagramRenderer, DiagramTheme } from './mermaid';
 
 let nextId = 0;
 
-export const render: DiagramRenderer = async (source: string, theme: DiagramTheme) => {
+// Mermaid configuration is global, so render one diagram at a time across tabs.
+let queue: Promise<void> = Promise.resolve();
+export const render: DiagramRenderer = (source, theme) => {
+  const result = queue.then(() => renderDiagram(source, theme));
+  queue = result.then(() => {}, () => {});
+  return result;
+};
+
+async function renderDiagram(source: string, theme: DiagramTheme): Promise<SVGSVGElement> {
   let id: string;
   do { id = `mermaid-diagram-${++nextId}`; } while (document.getElementById(id));
   const host = document.createElement('div');
@@ -40,4 +48,4 @@ export const render: DiagramRenderer = async (source: string, theme: DiagramThem
     takeMermaidStyles(id);
     host.remove();
   }
-};
+}

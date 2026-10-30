@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fs::File,
     io::Read,
     path::{Path, PathBuf},
@@ -62,7 +62,7 @@ impl LocalImages {
 #[derive(Default)]
 pub struct ImageStore {
     latest: u64,
-    current: Option<Arc<LocalImages>>,
+    open: HashMap<String, Arc<LocalImages>>,
     pending: Option<LocalImages>,
 }
 
@@ -80,11 +80,7 @@ impl ImageStore {
     }
 
     pub fn activate(&mut self, document_id: &str) -> Result<(), String> {
-        if self
-            .current
-            .as_ref()
-            .is_some_and(|images| images.id == document_id)
-        {
+        if self.open.contains_key(document_id) {
             return Ok(());
         }
         if !self
@@ -94,17 +90,27 @@ impl ImageStore {
         {
             return Err("La apertura ya no está disponible.".to_owned());
         }
-        if let Some(previous) = self.current.take() {
-            previous.active.store(false, Ordering::Relaxed);
-        }
-        self.current = self.pending.take().map(Arc::new);
+        let images = self.pending.take().unwrap();
+        self.open.insert(images.id.clone(), Arc::new(images));
         Ok(())
     }
 
-    pub fn get(&self, document_id: &str) -> Result<Arc<LocalImages>, String> {
-        self.current
+    pub fn close(&mut self, document_id: &str) {
+        if let Some(images) = self.open.remove(document_id) {
+            images.active.store(false, Ordering::Relaxed);
+        }
+        if self
+            .pending
             .as_ref()
-            .filter(|images| images.id == document_id)
+            .is_some_and(|images| images.id == document_id)
+        {
+            self.pending = None;
+        }
+    }
+
+    pub fn get(&self, document_id: &str) -> Result<Arc<LocalImages>, String> {
+        self.open
+            .get(document_id)
             .cloned()
             .ok_or("La apertura ya no está activa.".to_owned())
     }
@@ -604,7 +610,7 @@ mod tests {
     }
 
     #[test]
-    fn obsolete_loads_and_image_references_cannot_replace_the_current_opening() {
+    fn open_tabs_keep_images_until_closed_and_obsolete_loads_are_rejected() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("reading.md");
         fs::write(&path, "![image](image.png)").unwrap();
@@ -625,8 +631,12 @@ mod tests {
         assert!(store.activate(&second).is_err());
         store.activate(&third).unwrap();
         assert!(store.get(&second).is_err());
-        assert!(store.get(&first).is_err());
+        assert!(store.get(&first).is_ok());
         assert!(store.get("arbitrary/path.png").is_err());
+        store.activate(&first).unwrap();
+        store.close(&first);
+        store.close(&first);
+        assert!(store.get(&first).is_err());
         assert!(old.resolve(0).is_err());
         assert!(store.get(&third).unwrap().resolve(0).is_ok());
         // A failed opening leaves the visible document's remaining images valid.

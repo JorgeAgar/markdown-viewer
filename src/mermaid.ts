@@ -1,3 +1,5 @@
+import { documentWork, type DocumentWork } from './work-scheduler';
+
 export type DiagramTheme = 'light' | 'dark';
 export type DiagramRenderer = (source: string, theme: DiagramTheme) => Promise<SVGSVGElement>;
 type RendererLoader = () => Promise<DiagramRenderer>;
@@ -29,7 +31,7 @@ export function validateMermaidSource(source: string): void {
   }
 }
 
-/** Coordinates only the visible document. Opening requests have a separate id. */
+/** Coordinates one open tab. Opening requests have a separate id. */
 export class MermaidController {
   private generation = 0;
   private blocks: DiagramBlock[] = [];
@@ -43,6 +45,7 @@ export class MermaidController {
     private readonly root: HTMLElement,
     private readonly loadRenderer: RendererLoader = async () => (await import('./mermaid-runtime')).render,
     private readonly pause: () => Promise<void> = () => new Promise(resolve => setTimeout(resolve, 0)),
+    private readonly work: DocumentWork = documentWork.document(root),
   ) {
     this.media = window.matchMedia('(prefers-color-scheme: dark)');
     this.theme = this.media.matches ? 'dark' : 'light';
@@ -54,12 +57,14 @@ export class MermaidController {
     this.theme = event.matches ? 'dark' : 'light';
     if (!this.painted) return;
     const generation = ++this.generation;
+    this.work.invalidate();
     this.schedule(generation);
   };
 
   /** Prepare synchronously, then invoke the returned callback after text paint. */
   prepare(): () => void {
     const generation = ++this.generation;
+    this.work.invalidate();
     this.painted = false;
     delete this.root.dataset.diagramsReadyMs;
     this.blocks = [];
@@ -118,8 +123,9 @@ export class MermaidController {
           });
           const render = await this.renderer;
           if (!this.current(generation, block)) return;
-          const svg = await render(block.source, theme);
-          if (!this.current(generation, block)) return;
+          const svg = await this.work.run('diagram', block.figure, () => this.current(generation, block),
+            () => render(block.source, theme));
+          if (!svg || !this.current(generation, block)) return;
           const firstRender = block.display.childElementCount === 0;
           block.display.replaceChildren(svg);
           block.figure.dataset.state = 'ready';
@@ -147,6 +153,7 @@ export class MermaidController {
 
   dispose(): void {
     this.generation++;
+    this.work.invalidate();
     if (this.media.removeEventListener) this.media.removeEventListener('change', this.changeTheme);
     else this.media.removeListener(this.changeTheme);
   }

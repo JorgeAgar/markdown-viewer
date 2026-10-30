@@ -23,6 +23,9 @@ La [documentación del resaltado de código](docs/codigo.md) describe los lengua
 Los instaladores y paquetes están en [GitHub Releases](https://github.com/JorgeAgar/markdown-viewer/releases). El proceso para preparar y publicar versiones está documentado en [Publicar una versión](docs/releases.md).
 
 - Abre un archivo con el botón, `Ctrl+O` o `⌘O` en macOS.
+- Cada archivo se abre en una pestaña nueva. La barra de pestañas aparece solo cuando hay más de una.
+- Cambia de pestaña con un clic, con `Ctrl+AvPág` / `Ctrl+RePág` o con las flechas al enfocar la barra; cada pestaña conserva su posición de lectura. Los atajos recorren las pestañas de forma circular.
+- Cierra la pestaña activa con `Ctrl+W` / `⌘W` o usa su botón de cierre.
 - Arrastra un archivo a la ventana.
 - Pasa una ruta como argumento al ejecutable.
 - Tras instalar, elige Markdown Viewer en "Abrir con" para archivos `.md`, `.markdown`, `.mdown` y `.mkd`. El sistema decide la aplicación predeterminada.
@@ -69,7 +72,7 @@ Para abrir directamente un documento durante el desarrollo, pasa su ruta absolut
 pnpm run dev -- /ruta/completa/archivo.md
 ```
 
-`pnpm dev` prepara primero la interfaz y después inicia Tauri con recompilación de TypeScript y copia de HTML y CSS al editar. Tauri recarga la vista al cambiar los archivos generados.
+`pnpm dev` prepara primero la interfaz y después inicia Tauri con recompilación de TypeScript y copia de HTML y CSS al editar. Tauri recarga la vista al cambiar los archivos generados. Las compilaciones limpian el contenido de `dist/` sin sustituir la carpeta para conservar la recarga automática, también al ejecutar pruebas durante una sesión dev.
 
 Las fuentes viven en `src/`. `scripts/frontend.mjs` comprueba los tipos con TypeScript, empaqueta `dist/app.js` y los módulos de carga diferida con esbuild, copia `index.html` y `style.css`, y prepara el CSS, las fuentes WOFF2 y la licencia de KaTeX. `dist/` se genera automáticamente y no se sube al repositorio. El adaptador `scripts/mermaid-build.mjs` permite usar estilos Mermaid filtrados con el nonce de Tauri; al actualizar la biblioteca hay que revisar ese adaptador.
 
