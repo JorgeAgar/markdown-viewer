@@ -1,3 +1,5 @@
+import { documentWork, type DocumentWork } from './work-scheduler';
+
 import { codeLanguage } from './syntax-languages';
 
 export type CodeRenderer = (source: string, language: string) => string | Promise<string>;
@@ -16,10 +18,12 @@ export class SyntaxController {
     private readonly root: HTMLElement,
     private readonly loadRenderer: () => Promise<CodeRenderer> = async () => (await import('./syntax-runtime')).render,
     private readonly pause: () => Promise<void> = () => new Promise(resolve => setTimeout(resolve, 0)),
+    private readonly work: DocumentWork = documentWork.document(root),
   ) {}
 
   prepare(): () => void {
     const generation = ++this.generation;
+    this.work.invalidate();
     delete this.root.dataset.syntaxReadyMs;
     let started = false;
     return () => {
@@ -71,9 +75,10 @@ export class SyntaxController {
         const { block } = ordered[index]!;
         if (!this.root.contains(block.element)) continue;
         try {
-          const html = await render(block.source, block.language);
+          const html = await this.work.run('render', block.element, () => this.current(generation),
+            () => render(block.source, block.language));
           if (!this.current(generation)) return;
-          if (this.root.contains(block.element)) {
+          if (html !== undefined && this.root.contains(block.element)) {
             block.element.innerHTML = html;
             block.element.dataset.syntaxState = 'ready';
           }
@@ -94,5 +99,8 @@ export class SyntaxController {
     if (this.current(generation)) this.root.dataset.syntaxReadyMs = (performance.now() - started).toFixed(2);
   }
 
-  dispose(): void { this.generation++; }
+  dispose(): void {
+    this.generation++;
+    this.work.invalidate();
+  }
 }

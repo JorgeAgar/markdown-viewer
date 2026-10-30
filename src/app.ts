@@ -1,3 +1,4 @@
+import { documentWork, type DocumentWork } from './work-scheduler';
 import { MermaidController } from './mermaid';
 import { LocalImageController } from './local-images';
 import { MathController } from './math';
@@ -25,6 +26,7 @@ const filename = requireElement('#filename', HTMLElement);
 const fileDetail = requireElement('#file-detail', HTMLElement);
 const modifier = requireElement('#modifier', HTMLElement);
 interface DocumentTab {
+  work: DocumentWork;
   key: number;
   doc: Omit<RenderedDocument, 'html'>;
   article: HTMLElement;
@@ -43,6 +45,7 @@ let activeTab: DocumentTab | undefined;
 let nextTabKey = 0;
 
 function disposeTab(tab: DocumentTab): void {
+  tab.work.dispose();
   tab.diagrams.dispose();
   tab.images.dispose();
   tab.math.dispose();
@@ -102,6 +105,7 @@ function renderTabs(): void {
 function selectTab(tab: DocumentTab, focusTab = false): void {
   if (activeTab !== tab) {
     if (activeTab) {
+      activeTab.work.setActive(false);
       activeTab.scrollTop = reader.scrollTop;
       activeTab.article.hidden = true;
       activeTab.article.id = `document-${activeTab.key}`;
@@ -120,7 +124,10 @@ function selectTab(tab: DocumentTab, focusTab = false): void {
     reader.scrollTop = tab.scrollTop;
     void invoke('set_document_title', { name: tab.doc.name }).catch(console.error);
     requestAnimationFrame(() => requestAnimationFrame(() => {
-      if (activeTab === tab) tab.afterPaint();
+      if (activeTab === tab) {
+        tab.work.setActive(true);
+        tab.afterPaint();
+      }
     }));
   }
   if (focusTab && !tabBar.hidden) tab.button.focus({ preventScroll: true });
@@ -175,10 +182,11 @@ function addTab(doc: RenderedDocument, openingId: number): void {
   delete root.dataset.readyMs;
   prepareDocument(root);
   if (!root.isConnected) reader.append(root);
-  const diagrams = new MermaidController(root);
-  const images = new LocalImageController(root, reader);
-  const math = new MathController(root);
-  const syntax = new SyntaxController(root);
+  const work = documentWork.document(root, false);
+  const diagrams = new MermaidController(root, undefined, undefined, work);
+  const images = new LocalImageController(root, work);
+  const math = new MathController(root, undefined, undefined, work);
+  const syntax = new SyntaxController(root, undefined, undefined, work);
   const loadImages = images.prepare(doc.id);
   const renderDiagrams = diagrams.prepare();
   const renderMath = math.prepare();
@@ -202,7 +210,7 @@ function addTab(doc: RenderedDocument, openingId: number): void {
   let enhanced = false;
   let measured = false;
   const tab: DocumentTab = {
-    key, doc: metadata, article: root, item, button, diagrams, images, math, syntax, scrollTop: 0,
+    work, key, doc: metadata, article: root, item, button, diagrams, images, math, syntax, scrollTop: 0,
     afterPaint: () => {
       if (!enhanced) {
         enhanced = true;

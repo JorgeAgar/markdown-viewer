@@ -1,6 +1,5 @@
-const MAX_ACTIVE = 2;
-let active = 0;
-const waiting = new Set<LocalImageController>();
+import { documentWork, type DocumentWork } from './work-scheduler';
+
 const DATA_IMAGE = /^data:image\/(png|jpeg|gif|webp|avif|svg\+xml);base64,/;
 
 interface ImageJob {
@@ -13,16 +12,15 @@ interface ImageJob {
 
 export class LocalImageController {
   private generation = 0;
-  private pending: ImageJob[] = [];
   private remaining = 0;
   private started = 0;
 
-  constructor(private readonly article: HTMLElement, private readonly reader: HTMLElement) {}
+  constructor(private readonly article: HTMLElement,
+    private readonly work: DocumentWork = documentWork.document(article)) {}
 
   dispose(): void {
     this.generation++;
-    this.pending = [];
-    waiting.delete(this);
+    this.work.invalidate();
     this.remaining = 0;
   }
 
@@ -66,32 +64,16 @@ export class LocalImageController {
         }
         this.started = performance.now();
         this.remaining = jobs.length;
-        this.pending = jobs;
-        this.pump();
+        // The shared scheduler rechecks viewport priority before each read.
+        for (const job of jobs) {
+          void this.work.run('image', job.placeholder, () => this.current(job), () => this.resolve(job));
+        }
       });
     };
   }
 
   private current(job: ImageJob): boolean {
     return job.generation === this.generation && this.article.contains(job.placeholder);
-  }
-
-  private pump(): void {
-    // Re-evaluate visibility as the user scrolls and earlier images appear.
-    const viewport = this.reader.getBoundingClientRect();
-    const visible = (job: ImageJob): number => {
-      const bounds = job.placeholder.getBoundingClientRect();
-      return bounds.bottom >= viewport.top && bounds.top <= viewport.bottom ? 0 : 1;
-    };
-    this.pending.sort((a, b) => visible(a) - visible(b));
-    waiting.add(this);
-    while (active < MAX_ACTIVE && this.pending.length) {
-      const job = this.pending.shift()!;
-      if (!this.current(job)) continue;
-      active++;
-      void this.resolve(job);
-    }
-    if (!this.pending.length) waiting.delete(this);
   }
 
   private async resolve(job: ImageJob): Promise<void> {
@@ -117,9 +99,7 @@ export class LocalImageController {
         job.placeholder.textContent = job.image.alt || 'Imagen no disponible';
       }
     } finally {
-      active--;
       if (job.generation === this.generation) this.remaining--;
-      for (const controller of waiting) controller.pump();
       if (job.generation === this.generation && !this.remaining) {
         // Resolution means Rust completed reads/encoding, not WebView decoding.
         this.article.dataset.imagesResolvedMs = (performance.now() - this.started).toFixed(2);

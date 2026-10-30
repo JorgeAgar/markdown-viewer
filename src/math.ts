@@ -1,3 +1,5 @@
+import { documentWork, type DocumentWork } from './work-scheduler';
+
 export type MathRenderer = (source: string, display: boolean) => HTMLElement | Promise<HTMLElement>;
 type RendererLoader = () => Promise<MathRenderer>;
 
@@ -23,10 +25,12 @@ export class MathController {
       return runtime.render;
     },
     private readonly pause: () => Promise<void> = () => new Promise(resolve => setTimeout(resolve, 0)),
+    private readonly work: DocumentWork = documentWork.document(root),
   ) {}
 
   prepare(): () => void {
     const generation = ++this.generation;
+    this.work.invalidate();
     delete this.root.dataset.mathReadyMs;
     // Code and Mermaid definitions must remain literal, including raw HTML markers.
     const elements = [...this.root.querySelectorAll<HTMLElement>('span.math.math-inline, span.math.math-display')]
@@ -74,9 +78,10 @@ export class MathController {
         if (!this.current(generation)) return;
         const formula = ordered[index]!.formula;
         try {
-          const result = await render(formula.source, formula.display);
+          const result = await this.work.run('render', formula.element, () => this.current(generation),
+            () => render(formula.source, formula.display));
           if (!this.current(generation)) return;
-          if (this.root.contains(formula.element)) {
+          if (result && this.root.contains(formula.element)) {
             formula.element.replaceChildren(result);
             formula.element.dataset.mathState = 'ready';
           }
@@ -102,5 +107,6 @@ export class MathController {
 
   dispose(): void {
     this.generation++;
+    this.work.invalidate();
   }
 }

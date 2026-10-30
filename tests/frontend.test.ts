@@ -720,7 +720,7 @@ test('Ctrl+PageDown and Ctrl+PageUp cycle tabs from the reader or tab strip', as
     viewer.element('tabs').querySelector('[aria-selected="true"]'));
 });
 
-test('background image reads remain valid when switching tabs and share two slots', async t => {
+test('switching tabs prioritizes active images, pauses hidden reads and reuses completed images', async t => {
   const viewer = await createViewer(t);
   await viewer.load(illustrated('11', 3));
   await viewer.paint();
@@ -734,14 +734,18 @@ test('background image reads remain valid when switching tabs and share two slot
   oldFirst.resolve(imageData);
   oldSecond.resolve(imageData);
   await settle();
-  const third = viewer.tauri.take('resolve_document_image');
   const next = viewer.tauri.take('resolve_document_image');
-  assert.equal(third.args.documentId, '11');
   assert.equal(next.args.documentId, '12');
-  third.resolve(imageData);
+  assert.equal(viewer.tauri.pending.length, 0, 'The hidden tab must not refill free slots');
   next.resolve(imageData);
   await settle();
   viewer.element('tabs').querySelector<HTMLButtonElement>('[role="tab"]')!.click();
+  assert.equal(viewer.element('document').querySelectorAll('img').length, 2);
+  await viewer.paint();
+  const third = viewer.tauri.take('resolve_document_image');
+  assert.equal(third.args.documentId, '11');
+  third.resolve(imageData);
+  await settle();
   assert.equal(viewer.element('document').querySelectorAll('img').length, 3);
   assert.equal(viewer.tauri.calls.filter(call => call.command === 'activate_document_images').length, 2);
 });
@@ -792,4 +796,89 @@ test('rendered code remains in its original tab and is reused on return', async 
   await viewer.paint();
   assert.equal(viewer.window.__syntaxLoads, 1);
   assert.equal(viewer.element('document').querySelector('code'), code);
+});
+
+
+for (const kind of ['math', 'syntax', 'mermaid'] as const) {
+  test(`${kind} pauses between blocks in hidden tabs and resumes without repeating completed work`, async t => {
+    const viewer = await createViewer(t);
+    const first = Promise.withResolvers<void>();
+    const calls: string[] = [];
+    const html = kind === 'math'
+      ? '<span class="math math-inline">one</span><span class="math math-inline">two</span>'
+      : `<pre><code class="language-${kind === 'syntax' ? 'js' : 'mermaid'}">${kind === 'mermaid' ? 'graph TD; one-->A' : 'one'}</code></pre>`
+        + `<pre><code class="language-${kind === 'syntax' ? 'js' : 'mermaid'}">${kind === 'mermaid' ? 'graph TD; two-->A' : 'two'}</code></pre>`;
+    const record = async (source: string) => {
+      calls.push(source);
+      if (calls.length === 1) await first.promise;
+    };
+    viewer.window.__renderMathForTests = async source => { await record(source); return viewer.window.document.createElement('b'); };
+    viewer.window.__renderCodeForTests = async source => { await record(source); return `<b>${source}</b>`; };
+    viewer.window.__renderMermaidForTests = async source => { await record(source); return viewer.window.document.createElementNS('http://www.w3.org/2000/svg', 'svg'); };
+    await viewer.load({ ...rendered('complex.md'), html });
+    await viewer.paint();
+    viewer.tauri.take('content_painted').resolve(1);
+    assert.equal(calls.length, 1);
+    await viewer.load(rendered('plain.md'));
+    await viewer.paint();
+    viewer.tauri.take('content_painted').resolve(1);
+    first.resolve();
+    // Mermaid yields between blocks; wait for that boundary as well.
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(calls.length, 1, 'Hidden tabs must not start the second block');
+    viewer.element('tabs').querySelector<HTMLButtonElement>('[role="tab"]')!.click();
+    await settle();
+    assert.equal(calls.length, 1, 'Resume must wait for text paint');
+    await viewer.paint();
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(calls.length, 2);
+    assert.equal(new Set(calls).size, 2, 'The first block must not render again');
+  });
+}
+
+test('hidden Mermaid tabs defer theme work and use only the latest theme on return', async t => {
+  const viewer = await createViewer(t);
+  const themes: string[] = [];
+  viewer.window.__renderMermaidForTests = async (_source, theme) => {
+    themes.push(theme);
+    return viewer.window.document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  };
+  await viewer.load({ ...rendered('diagram.md'), html: '<pre><code class="language-mermaid">graph TD; A-->B</code></pre>' });
+  await viewer.paint(); viewer.tauri.take('content_painted').resolve(1);
+  await new Promise(resolve => setTimeout(resolve, 20));
+  await viewer.load(rendered('plain.md'));
+  await viewer.paint(); viewer.tauri.take('content_painted').resolve(1);
+  viewer.changeTheme(true);
+  await settle();
+  viewer.changeTheme(false);
+  await settle();
+  viewer.changeTheme(true);
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.deepEqual(themes, ['light']);
+  viewer.element('tabs').querySelector<HTMLButtonElement>('[role="tab"]')!.click();
+  await viewer.paint();
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.deepEqual(themes, ['light', 'dark']);
+});
+
+test('with 100 tabs, queued Mermaid work belongs to the active tab while another diagram finishes', async t => {
+  const viewer = await createViewer(t);
+  const first = Promise.withResolvers<SVGSVGElement>();
+  const sources: string[] = [];
+  viewer.window.__renderMermaidForTests = async source => {
+    sources.push(source);
+    return sources.length === 1 ? first.promise : viewer.window.document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  };
+  for (const name of Array.from({ length: 100 }, (_, index) => `Doc${index}`)) {
+    await viewer.load({ ...rendered(name), html: `<pre><code class="language-mermaid">graph TD; ${name}-->X</code></pre>` });
+    await viewer.paint(); viewer.tauri.take('content_painted').resolve(1);
+  }
+  assert.deepEqual(sources, ['graph TD; Doc0-->X']);
+  first.resolve(viewer.window.document.createElementNS('http://www.w3.org/2000/svg', 'svg'));
+  await settle();
+  assert.deepEqual(sources, ['graph TD; Doc0-->X', 'graph TD; Doc99-->X']);
+  // Closing a paused tab cancels its queued block rather than leaving a future render.
+  viewer.element('tabs').querySelectorAll<HTMLButtonElement>('.tab-close')[1]!.click();
+  await settle();
+  assert.deepEqual(sources, ['graph TD; Doc0-->X', 'graph TD; Doc99-->X']);
 });
