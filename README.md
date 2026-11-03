@@ -87,25 +87,21 @@ pnpm build
 
 Ambos comandos preparan la interfaz mediante el hook `beforeBuildCommand` de Tauri. También puedes generar solo los archivos del frontend con `pnpm build:frontend`, sin compilar Rust.
 
-El primer comando genera el ejecutable optimizado en `src-tauri/target/release/`. El segundo también genera los paquetes de instalación admitidos por el sistema de compilación en `src-tauri/target/release/bundle/`.
+El primer comando genera el ejecutable optimizado en `src-tauri/target/release/`. El segundo también genera los instaladores de Windows o macOS en `src-tauri/target/release/bundle/`. En Linux los bundles de Tauri están desactivados; usa `pnpm build:linux` para generar el tarball.
 
-Compila cada versión en su sistema correspondiente. El workflow de GitHub Actions compila Linux, Windows y macOS y guarda paquetes `.deb`, `.exe` y `.dmg` como artefactos. Los paquetes del prototipo no tienen firma de distribución ni notarización.
+Compila cada versión en su sistema correspondiente. El workflow de GitHub Actions genera un único `.tar.gz` para Linux, un `.exe` para Windows y un `.dmg` para macOS. Los paquetes del prototipo no tienen firma de distribución ni notarización.
 
-### Build para Arch Linux
-
-El workflow también tiene un job independiente en un contenedor Arch Linux que genera `markdown-viewer-<versión>-arch-x86_64.tar.gz`. El artefacto `markdown-viewer-Arch-x86_64` contiene el tar con el ejecutable, el icono, un `.desktop` y las [instrucciones de uso e instalación](packaging/arch/README.md). La build usa las bibliotecas de un Arch actualizado y está destinada a x86_64.
-
-Para generarlo en Arch, necesitas Node.js 24, pnpm y Rust estable. Instala las bibliotecas de desarrollo y ejecuta:
+### Tarball para Linux
 
 ```sh
-sudo pacman -Syu --needed base-devel webkit2gtk-4.1 openssl libappindicator-gtk3 librsvg
-pnpm install --frozen-lockfile
-pnpm build:arch
+pnpm build:linux
 ```
 
-El tar queda en `artifacts/packages/`. `pnpm package:arch` empaqueta una build release existente sin volver a compilar. La interfaz y Mermaid quedan incluidos en el ejecutable; el tar necesita GTK y WebKitGTK del sistema. Para usarlo no necesitas las herramientas de desarrollo.
+Genera `artifacts/packages/markdown-viewer-<versión>-linux-x86_64.tar.gz` con el ejecutable, el icono, un `.desktop` y las [instrucciones de uso e instalación](packaging/linux/README.md). `pnpm package:linux` empaqueta una build release existente sin volver a compilar. No se generan paquetes `.deb`.
 
-El CI extrae el tar, comprueba sus bibliotecas compartidas y mide cinco aperturas del ejecutable extraído en un escritorio virtual. Los registros quedan en `arch-validation`. La opción manual `linux_only` ejecuta ambos jobs Linux, Ubuntu y Arch.
+La distribución oficial se compila en Ubuntu 22.04 para x86_64. Necesita glibc 2.35 o posterior, GTK 3 y WebKitGTK 4.1 del sistema; el tar no incluye esas bibliotecas. Para ejecutarlo no necesitas Rust, Node.js ni pnpm. Una compilación local puede requerir versiones de bibliotecas más recientes según el sistema donde la generes.
+
+El CI extrae el mismo tarball en Ubuntu y en un contenedor Arch actualizado, comprueba sus bibliotecas compartidas y mide cinco aperturas del ejecutable extraído. Ubuntu también ejecuta las pruebas E2E contra ese ejecutable. Los registros quedan en `linux-validation` y `arch-validation`; solo se publica el artefacto `markdown-viewer-Linux`. La opción manual `linux_only` limita el workflow a la build Linux y sus validaciones.
 
 ## Validación
 

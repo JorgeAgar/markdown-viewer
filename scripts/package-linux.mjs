@@ -5,10 +5,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 if (process.platform !== 'linux' || process.arch !== 'x64') {
-  throw new Error('Este paquete requiere una build Linux x86_64 compilada en Arch.');
-}
-if (!/^ID="?arch"?$/m.test(readFileSync('/etc/os-release', 'utf8'))) {
-  throw new Error('Genera el paquete en Arch Linux para usar las bibliotecas de esa distribución.');
+  throw new Error('Este paquete requiere una build Linux x86_64 compilada en Linux.');
 }
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -16,7 +13,7 @@ const config = JSON.parse(readFileSync(join(root, 'src-tauri/tauri.conf.json'), 
 const binary = join(root, 'src-tauri/target/release/markdown-viewer');
 accessSync(binary, constants.X_OK);
 
-const name = `markdown-viewer-${config.version}-arch-x86_64`;
+const name = `markdown-viewer-${config.version}-linux-x86_64`;
 const output = join(root, 'artifacts/packages');
 const archive = join(output, `${name}.tar.gz`);
 const temporary = mkdtempSync(join(tmpdir(), 'markdown-viewer-package-'));
@@ -27,7 +24,7 @@ try {
   copyFileSync(binary, join(directory, 'markdown-viewer'));
   chmodSync(join(directory, 'markdown-viewer'), 0o755);
   copyFileSync(join(root, 'src-tauri/icons/128x128.png'), join(directory, 'icon.png'));
-  copyFileSync(join(root, 'packaging/arch/README.md'), join(directory, 'README.md'));
+  copyFileSync(join(root, 'packaging/linux/README.md'), join(directory, 'README.md'));
 
   const fields = {
     name: config.productName,
