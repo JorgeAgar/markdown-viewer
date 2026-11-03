@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod document;
+mod opening;
 
 use std::{
     path::PathBuf,
@@ -15,30 +16,15 @@ use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
 struct Viewer {
-    pending: Mutex<Option<Opening>>,
+    openings: Mutex<opening::Openings>,
     metrics: Mutex<Option<(String, Instant)>>,
     detailed: bool,
     frontend_ready_ms: OnceLock<f64>,
-    images: Mutex<document::ImageStore>,
     started: Instant,
     measured: AtomicBool,
 }
 
-struct Opening {
-    path: PathBuf,
-    origin: Instant,
-    source: &'static str,
-}
-
-impl Opening {
-    fn new(path: PathBuf, source: &'static str) -> Self {
-        Self {
-            path,
-            origin: Instant::now(),
-            source,
-        }
-    }
-}
+use opening::Opening;
 
 fn path_from_args(args: impl IntoIterator<Item = String>, cwd: Option<&str>) -> Option<PathBuf> {
     args.into_iter()
@@ -60,8 +46,13 @@ fn path_from_args(args: impl IntoIterator<Item = String>, cwd: Option<&str>) -> 
 }
 
 fn queue_file(app: &tauri::AppHandle, path: PathBuf) {
+    let opening = Opening::new(path, "os");
     let state = app.state::<Viewer>();
-    *state.pending.lock().unwrap() = Some(Opening::new(path, "os"));
+    let mut openings = state.openings.lock().unwrap();
+    *state.metrics.lock().unwrap() = None;
+    let prepared = openings.prepare(opening, state.started, state.detailed);
+    openings.pending = Some(prepared);
+    drop(openings);
     let _ = app.emit("file-pending", ());
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
@@ -69,40 +60,44 @@ fn queue_file(app: &tauri::AppHandle, path: PathBuf) {
     }
 }
 
+async fn deliver_document(
+    app: tauri::AppHandle,
+    prepared: opening::Preparation,
+) -> Result<Option<document::Document>, String> {
+    let state = app.state::<Viewer>();
+    let (id, origin, loaded) = prepared.finish().await;
+    let mut openings = state.openings.lock().unwrap();
+    // Check before propagating errors too: an obsolete failure is not a UI error.
+    let Some(mut document) = openings.publish(&id, loaded)? else {
+        return Ok(None);
+    };
+    if state.detailed {
+        *state.metrics.lock().unwrap() = Some((id, origin));
+    }
+    if let Some(json) = document.opening_metrics.as_mut() {
+        let mut timing: serde_json::Value = serde_json::from_str(json).unwrap();
+        timing["main_to_frontend_ready_ms"] = serde_json::json!(state.frontend_ready_ms.get());
+        timing["origin_to_response_ms"] = (origin.elapsed().as_secs_f64() * 1000.0).into();
+        *json = timing.to_string();
+    }
+    Ok(Some(document))
+}
+
 async fn load_document(
     app: tauri::AppHandle,
     opening: Opening,
 ) -> Result<document::Document, String> {
-    let state = app.state::<Viewer>();
-    let id = state.images.lock().unwrap().begin();
-    let timing = state.detailed.then(|| {
-        serde_json::json!({
-            "version": 1, "opening_id": id, "source": opening.source,
-            "main_to_frontend_ready_ms": state.frontend_ready_ms.get(),
-            "main_to_load_dispatch_ms": state.started.elapsed().as_secs_f64() * 1000.0,
-            "origin_to_dispatch_ms": opening.origin.elapsed().as_secs_f64() * 1000.0,
-        })
-    });
-    if state.detailed {
-        *state.metrics.lock().unwrap() = Some((id.clone(), opening.origin));
-    }
-    let loaded = tauri::async_runtime::spawn_blocking(move || {
-        let mut timing = timing;
-        if let Some(timing) = timing.as_mut() {
-            timing["origin_to_worker_ms"] =
-                (opening.origin.elapsed().as_secs_f64() * 1000.0).into();
-        }
-        document::load(&opening.path, id, timing)
-    })
-    .await
-    .map_err(|_| "No se pudo procesar el documento.".to_owned())??;
-    let mut document = state.images.lock().unwrap().publish(loaded);
-    if let Some(json) = document.opening_metrics.as_mut() {
-        let mut timing: serde_json::Value = serde_json::from_str(json).unwrap();
-        timing["origin_to_response_ms"] = (opening.origin.elapsed().as_secs_f64() * 1000.0).into();
-        *json = timing.to_string();
-    }
-    Ok(document)
+    let prepared = {
+        let state = app.state::<Viewer>();
+        let mut openings = state.openings.lock().unwrap();
+        // An explicit opening supersedes an unconsumed startup/OS result.
+        openings.pending = None;
+        *state.metrics.lock().unwrap() = None;
+        openings.prepare(opening, state.started, state.detailed)
+    };
+    deliver_document(app, prepared)
+        .await?
+        .ok_or_else(|| "La apertura ya no está vigente.".to_owned())
 }
 
 // A single slot bounds memory and rejects late/duplicate acknowledgements.
@@ -151,12 +146,12 @@ fn opening_painted(
 
 #[tauri::command]
 fn activate_document_images(state: State<'_, Viewer>, document_id: String) -> Result<(), String> {
-    state.images.lock().unwrap().activate(&document_id)
+    state.openings.lock().unwrap().images.activate(&document_id)
 }
 
 #[tauri::command]
 fn close_document(state: State<'_, Viewer>, document_id: String) {
-    state.images.lock().unwrap().close(&document_id);
+    state.openings.lock().unwrap().images.close(&document_id);
 }
 
 #[tauri::command]
@@ -181,9 +176,10 @@ async fn resolve_document_image(
 ) -> Result<String, String> {
     let images = app
         .state::<Viewer>()
-        .images
+        .openings
         .lock()
         .unwrap()
+        .images
         .get(&document_id)?;
     tauri::async_runtime::spawn_blocking(move || images.resolve(image_id))
         .await
@@ -198,9 +194,9 @@ async fn take_pending_document(
     state
         .frontend_ready_ms
         .get_or_init(|| state.started.elapsed().as_secs_f64() * 1000.0);
-    let path = state.pending.lock().unwrap().take();
-    match path {
-        Some(path) => load_document(app, path).await.map(Some),
+    let prepared = state.openings.lock().unwrap().pending.take();
+    match prepared {
+        Some(prepared) => deliver_document(app, prepared).await,
         None => Ok(None),
     }
 }
@@ -284,15 +280,32 @@ fn main() {
                 let _ = window.set_focus();
             }
         }))
+        // Plugin setup runs before configured windows are built. Single-instance
+        // must stay first: secondary processes exit before any expensive work.
+        .plugin(
+            tauri::plugin::Builder::<tauri::Wry>::new("initial-document")
+                .setup(move |app, _| {
+                    if let Some(opening) = pending {
+                        let state = app.state::<Viewer>();
+                        let mut openings = state.openings.lock().unwrap();
+                        // A single-instance callback may already have queued a newer path.
+                        if openings.is_empty() {
+                            let prepared = openings.prepare(opening, state.started, state.detailed);
+                            openings.pending = Some(prepared);
+                        }
+                    }
+                    Ok(())
+                })
+                .build(),
+        )
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(Viewer {
-            pending: Mutex::new(pending),
+            openings: Mutex::new(opening::Openings::default()),
             metrics: Mutex::new(None),
             frontend_ready_ms: OnceLock::new(),
             detailed: std::env::var_os("MD_VIEWER_METRICS").is_some()
                 || std::env::var_os("MD_VIEWER_BENCHMARK").is_some(),
-            images: Mutex::new(document::ImageStore::default()),
             started,
             measured: AtomicBool::new(false),
         })
