@@ -229,7 +229,7 @@ function addTab(doc: RenderedDocument, openingId: number, received: number, requ
           if (activeTab === tab && openingId === requestId) root.dataset.readyMs = elapsed.toFixed(2);
         }).catch(console.error);
         if (metrics) {
-          void invoke('opening_painted', { documentId: doc.id, frontendMetrics: JSON.stringify({
+          void invoke('opening_painted', { documentId: metadata.id, frontendMetrics: JSON.stringify({
             backend: metrics,
             // Only drop has a JS origin that excludes waiting for user input.
             request_roundtrip_ms: command === 'open_document' ? received - requestStarted : null,
