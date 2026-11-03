@@ -143,10 +143,12 @@ Cierra cualquier instancia abierta y compila en modo release:
 
 ```sh
 pnpm build:binary
+pnpm benchmark --suite 5
+# O un archivo propio:
 pnpm benchmark examples/bienvenido.md 5
 ```
 
-La medición comienza al entrar en `main` y termina tras dos llamadas a `requestAnimationFrame` después de insertar el documento. Es una aproximación al primer pintado del texto; no es una medición del compositor ni incluye la carga de todas las imágenes. El script también informa el tiempo desde la creación del proceso hasta su salida.
+La medición comienza al entrar en `main` y termina tras dos llamadas a `requestAnimationFrame` después de insertar el documento. Se conserva como `MD_VIEWER_PAINT_MS` y `data-ready-ms` por compatibilidad. Es una oportunidad de pintado del texto, no una medición de píxeles ni del compositor, y no incluye la carga de todas las imágenes. `data-ready-ms` sigue teniendo origen en `main`, incluso en aperturas posteriores; para ellas usa las métricas por apertura. El script también informa el tiempo desde la creación del proceso hasta su salida. La suite crea muestras UTF-8 deterministas pequeña, grande (>1 MiB) y enriquecida (tablas, tareas, código, matemáticas, Mermaid e imágenes locales ausentes), sin descargar recursos. Ejecuta procesos nuevos secuenciales, imprime cada registro JSON y resume n, mínimo, mediana, p90 interpolado, máximo, media y desviación poblacional por fase. Con cinco repeticiones los percentiles son orientativos. No hay descarte automático de la primera muestra. El contenido enriquecido mide la preparación inicial, no la finalización de los renderizadores diferidos. Consulta la [semántica de las fases](docs/opening-metrics.md).
 
 No se muestra una ventana de carga ni se espera por recursos de red para mostrar el texto. Las imágenes HTTPS se cargan con `loading="lazy"`. Las imágenes Markdown locales se devuelven como referencias de la apertura y se solicitan después del primer pintado, con hasta dos solicitudes pendientes y prioridad para las visibles. Rust valida y lee cada imagen entonces, sin retrasar la devolución del texto. Mermaid, KaTeX y Highlight.js empiezan después de la oportunidad de primer pintado del texto. `data-diagrams-ready-ms`, `data-math-ready-ms` y `data-syntax-ready-ms` registran aparte los tiempos de sus lotes, incluida la carga inicial de las bibliotecas. La medida matemática no incluye necesariamente el pintado ni la carga completa de las fuentes.
 

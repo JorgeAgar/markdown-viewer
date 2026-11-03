@@ -6,7 +6,7 @@ use std::{
     path::PathBuf,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Mutex,
+        Mutex, OnceLock,
     },
     time::Instant,
 };
@@ -15,10 +15,29 @@ use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
 struct Viewer {
-    pending: Mutex<Option<PathBuf>>,
+    pending: Mutex<Option<Opening>>,
+    metrics: Mutex<Option<(String, Instant)>>,
+    detailed: bool,
+    frontend_ready_ms: OnceLock<f64>,
     images: Mutex<document::ImageStore>,
     started: Instant,
     measured: AtomicBool,
+}
+
+struct Opening {
+    path: PathBuf,
+    origin: Instant,
+    source: &'static str,
+}
+
+impl Opening {
+    fn new(path: PathBuf, source: &'static str) -> Self {
+        Self {
+            path,
+            origin: Instant::now(),
+            source,
+        }
+    }
 }
 
 fn path_from_args(args: impl IntoIterator<Item = String>, cwd: Option<&str>) -> Option<PathBuf> {
@@ -42,7 +61,7 @@ fn path_from_args(args: impl IntoIterator<Item = String>, cwd: Option<&str>) -> 
 
 fn queue_file(app: &tauri::AppHandle, path: PathBuf) {
     let state = app.state::<Viewer>();
-    *state.pending.lock().unwrap() = Some(path);
+    *state.pending.lock().unwrap() = Some(Opening::new(path, "os"));
     let _ = app.emit("file-pending", ());
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
@@ -50,13 +69,84 @@ fn queue_file(app: &tauri::AppHandle, path: PathBuf) {
     }
 }
 
-async fn load_document(app: tauri::AppHandle, path: PathBuf) -> Result<document::Document, String> {
-    let id = app.state::<Viewer>().images.lock().unwrap().begin();
-    let loaded = tauri::async_runtime::spawn_blocking(move || document::load(&path, id))
-        .await
-        .map_err(|_| "No se pudo procesar el documento.".to_owned())??;
-    let document = app.state::<Viewer>().images.lock().unwrap().publish(loaded);
+async fn load_document(
+    app: tauri::AppHandle,
+    opening: Opening,
+) -> Result<document::Document, String> {
+    let state = app.state::<Viewer>();
+    let id = state.images.lock().unwrap().begin();
+    let timing = state.detailed.then(|| {
+        serde_json::json!({
+            "version": 1, "opening_id": id, "source": opening.source,
+            "main_to_frontend_ready_ms": state.frontend_ready_ms.get(),
+            "main_to_load_dispatch_ms": state.started.elapsed().as_secs_f64() * 1000.0,
+            "origin_to_dispatch_ms": opening.origin.elapsed().as_secs_f64() * 1000.0,
+        })
+    });
+    if state.detailed {
+        *state.metrics.lock().unwrap() = Some((id.clone(), opening.origin));
+    }
+    let loaded = tauri::async_runtime::spawn_blocking(move || {
+        let mut timing = timing;
+        if let Some(timing) = timing.as_mut() {
+            timing["origin_to_worker_ms"] =
+                (opening.origin.elapsed().as_secs_f64() * 1000.0).into();
+        }
+        document::load(&opening.path, id, timing)
+    })
+    .await
+    .map_err(|_| "No se pudo procesar el documento.".to_owned())??;
+    let mut document = state.images.lock().unwrap().publish(loaded);
+    if let Some(json) = document.opening_metrics.as_mut() {
+        let mut timing: serde_json::Value = serde_json::from_str(json).unwrap();
+        timing["origin_to_response_ms"] = (opening.origin.elapsed().as_secs_f64() * 1000.0).into();
+        *json = timing.to_string();
+    }
     Ok(document)
+}
+
+// A single slot bounds memory and rejects late/duplicate acknowledgements.
+fn finish_opening(slot: &mut Option<(String, Instant)>, id: &str) -> Option<Instant> {
+    if slot.as_ref().is_some_and(|(current, _)| current == id) {
+        slot.take().map(|(_, origin)| origin)
+    } else {
+        None
+    }
+}
+
+#[tauri::command]
+fn opening_painted(
+    app: tauri::AppHandle,
+    state: State<'_, Viewer>,
+    document_id: String,
+    frontend_metrics: String,
+) {
+    if !state.detailed {
+        return;
+    }
+    if let Some(origin) = finish_opening(&mut state.metrics.lock().unwrap(), &document_id) {
+        if let Ok(frontend) = serde_json::from_str::<serde_json::Value>(&frontend_metrics) {
+            let ack_ms = origin.elapsed().as_secs_f64() * 1000.0;
+            let overhead = frontend["backend"]["origin_to_response_ms"]
+                .as_f64()
+                .zip(frontend["receive_to_opportunity_ms"].as_f64())
+                .map(|(response, frontend)| ack_ms - response - frontend);
+            eprintln!(
+                "MD_VIEWER_OPENING={}",
+                serde_json::json!({
+                    "opening_id": document_id,
+                    "origin_to_ack_ms": ack_ms,
+                    "response_and_ack_overhead_ms": overhead,
+                    "frontend": frontend,
+                })
+            );
+            if state.measured.load(Ordering::Relaxed)
+                && std::env::var_os("MD_VIEWER_BENCHMARK_EXIT").is_some()
+            {
+                app.exit(0);
+            }
+        }
+    }
 }
 
 #[tauri::command]
@@ -104,7 +194,11 @@ async fn resolve_document_image(
 async fn take_pending_document(
     app: tauri::AppHandle,
 ) -> Result<Option<document::Document>, String> {
-    let path = app.state::<Viewer>().pending.lock().unwrap().take();
+    let state = app.state::<Viewer>();
+    state
+        .frontend_ready_ms
+        .get_or_init(|| state.started.elapsed().as_secs_f64() * 1000.0);
+    let path = state.pending.lock().unwrap().take();
     match path {
         Some(path) => load_document(app, path).await.map(Some),
         None => Ok(None),
@@ -113,7 +207,7 @@ async fn take_pending_document(
 
 #[tauri::command]
 async fn open_document(app: tauri::AppHandle, path: String) -> Result<document::Document, String> {
-    load_document(app, PathBuf::from(path)).await
+    load_document(app, Opening::new(PathBuf::from(path), "drop")).await
 }
 
 #[tauri::command]
@@ -135,8 +229,11 @@ async fn choose_document(app: tauri::AppHandle) -> Result<Option<document::Docum
     match selection {
         Some(path) => load_document(
             app,
-            path.into_path()
-                .map_err(|_| "Ruta de archivo inválida.".to_owned())?,
+            Opening::new(
+                path.into_path()
+                    .map_err(|_| "Ruta de archivo inválida.".to_owned())?,
+                "picker",
+            ),
         )
         .await
         .map(Some),
@@ -162,7 +259,9 @@ fn content_painted(app: tauri::AppHandle, state: State<'_, Viewer>, has_document
         if std::env::var_os("MD_VIEWER_BENCHMARK").is_some() {
             eprintln!("MD_VIEWER_PAINT_MS={elapsed:.2}");
         }
-        if std::env::var_os("MD_VIEWER_BENCHMARK_EXIT").is_some() {
+        if std::env::var_os("MD_VIEWER_BENCHMARK_EXIT").is_some()
+            && (!state.detailed || state.metrics.lock().unwrap().is_none())
+        {
             app.exit(0);
         }
     }
@@ -171,7 +270,11 @@ fn content_painted(app: tauri::AppHandle, state: State<'_, Viewer>, has_document
 
 fn main() {
     let started = Instant::now();
-    let pending = path_from_args(std::env::args(), None);
+    let pending = path_from_args(std::env::args(), None).map(|path| Opening {
+        path,
+        origin: started,
+        source: "initial",
+    });
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
             if let Some(path) = path_from_args(args, Some(&cwd)) {
@@ -185,6 +288,10 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .manage(Viewer {
             pending: Mutex::new(pending),
+            metrics: Mutex::new(None),
+            frontend_ready_ms: OnceLock::new(),
+            detailed: std::env::var_os("MD_VIEWER_METRICS").is_some()
+                || std::env::var_os("MD_VIEWER_BENCHMARK").is_some(),
             images: Mutex::new(document::ImageStore::default()),
             started,
             measured: AtomicBool::new(false),
@@ -198,7 +305,8 @@ fn main() {
             set_document_title,
             resolve_document_image,
             open_link,
-            content_painted
+            content_painted,
+            opening_painted
         ])
         .build(tauri::generate_context!())
         .expect("No se pudo iniciar Markdown Viewer")
@@ -217,6 +325,16 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn opening_acknowledgements_are_correlated_and_single_use() {
+        let origin = Instant::now();
+        let mut slot = Some(("second".to_owned(), origin));
+        assert!(finish_opening(&mut slot, "first").is_none());
+        assert_eq!(finish_opening(&mut slot, "second"), Some(origin));
+        assert!(finish_opening(&mut slot, "second").is_none());
+        assert!(slot.is_none());
+    }
 
     #[test]
     fn resolves_open_events_relative_to_the_launching_directory() {

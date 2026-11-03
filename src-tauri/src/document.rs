@@ -25,6 +25,7 @@ pub struct Document {
     pub name: String,
     pub html: String,
     pub bytes: usize,
+    pub opening_metrics: Option<String>,
 }
 
 pub struct LoadedDocument {
@@ -186,7 +187,12 @@ fn relative_url(url: &str) -> Option<std::borrow::Cow<'_, str>> {
         .then_some(std::borrow::Cow::Borrowed(url))
 }
 
-fn render(markdown: &str, document_id: &str) -> (String, Vec<String>) {
+fn render(
+    markdown: &str,
+    document_id: &str,
+    timing: &mut Option<serde_json::Value>,
+) -> (String, Vec<String>) {
+    let start = timing.as_ref().map(|_| std::time::Instant::now());
     let options = Options::ENABLE_TABLES
         | Options::ENABLE_STRIKETHROUGH
         | Options::ENABLE_TASKLISTS
@@ -225,6 +231,10 @@ fn render(markdown: &str, document_id: &str) -> (String, Vec<String>) {
     });
     let mut output = String::with_capacity(markdown.len());
     html::push_html(&mut output, parser);
+    if let Some(start) = start {
+        timing.as_mut().unwrap()["markdown_ms"] = (start.elapsed().as_secs_f64() * 1000.0).into();
+    }
+    let start = timing.as_ref().map(|_| std::time::Instant::now());
     let html = ammonia::Builder::default()
         .add_tags(&["input"])
         .add_tag_attributes("input", &["type", "checked", "disabled"])
@@ -277,10 +287,18 @@ fn render(markdown: &str, document_id: &str) -> (String, Vec<String>) {
         .url_relative(ammonia::UrlRelative::Custom(Box::new(relative_url)))
         .clean(&output)
         .to_string();
+    if let Some(start) = start {
+        timing.as_mut().unwrap()["sanitize_ms"] = (start.elapsed().as_secs_f64() * 1000.0).into();
+    }
     (html, sources)
 }
 
-pub fn load(path: &Path, id: String) -> Result<LoadedDocument, String> {
+pub fn load(
+    path: &Path,
+    id: String,
+    mut timing: Option<serde_json::Value>,
+) -> Result<LoadedDocument, String> {
+    let start = timing.as_ref().map(|_| std::time::Instant::now());
     if !is_markdown(path) {
         return Err("Selecciona un archivo .md, .markdown, .mdown o .mkd.".to_owned());
     }
@@ -290,7 +308,10 @@ pub fn load(path: &Path, id: String) -> Result<LoadedDocument, String> {
     let bytes = read_limited(&path, MAX_DOCUMENT_BYTES)?;
     let text = std::str::from_utf8(&bytes)
         .map_err(|_| "El archivo debe estar guardado con codificación UTF-8.".to_owned())?;
-    let (html, sources) = render(text.trim_start_matches('\u{feff}'), &id);
+    if let Some(start) = start {
+        timing.as_mut().unwrap()["read_ms"] = (start.elapsed().as_secs_f64() * 1000.0).into();
+    }
+    let (html, sources) = render(text.trim_start_matches('\u{feff}'), &id, &mut timing);
     let images = LocalImages {
         id: id.clone(),
         directory: path.parent().unwrap_or(Path::new(".")).to_owned(),
@@ -309,6 +330,7 @@ pub fn load(path: &Path, id: String) -> Result<LoadedDocument, String> {
             path: path.to_string_lossy().into_owned(),
             html,
             bytes: bytes.len(),
+            opening_metrics: timing.map(|value| value.to_string()),
         },
         images,
     })
@@ -320,12 +342,35 @@ mod tests {
     use std::fs;
     use tempfile::tempdir;
 
+    #[test]
+    fn phase_measurements_are_opt_in_and_preserve_html() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("phases.md");
+        fs::write(&path, "# Unicode ñ\n\n<script>bad()</script>\n\n**bold**").unwrap();
+        let plain = super::load(&path, "1".into(), None).unwrap().document;
+        let timed = super::load(
+            &path,
+            "2".into(),
+            Some(serde_json::json!({"opening_id": "2"})),
+        )
+        .unwrap()
+        .document;
+        assert_eq!(plain.html, timed.html);
+        assert!(plain.opening_metrics.is_none());
+        let phases: serde_json::Value =
+            serde_json::from_str(&timed.opening_metrics.unwrap()).unwrap();
+        assert_eq!(phases["opening_id"], "2");
+        for name in ["read_ms", "markdown_ms", "sanitize_ms"] {
+            assert!(phases[name].as_f64().unwrap() >= 0.0);
+        }
+    }
+
     fn render(markdown: &str, _directory: &Path) -> String {
-        super::render(markdown, "1").0
+        super::render(markdown, "1", &mut None).0
     }
 
     fn load(path: &Path) -> Result<Document, String> {
-        super::load(path, "1".to_owned()).map(|loaded| loaded.document)
+        super::load(path, "1".to_owned(), None).map(|loaded| loaded.document)
     }
 
     fn image_source(source: &str, directory: &Path, remaining: &mut usize) -> Option<String> {
@@ -501,7 +546,7 @@ mod tests {
         assert!(image_source("linked.png", &docs, &mut budget).is_none());
         let path = docs.join("reading.md");
         fs::write(&path, "![link](linked.png)").unwrap();
-        let loaded = super::load(&path, "1".into()).unwrap();
+        let loaded = super::load(&path, "1".into(), None).unwrap();
         assert!(loaded.images.resolve(0).is_err());
     }
 
@@ -516,7 +561,7 @@ mod tests {
         let path = docs.join("reading.md");
         fs::write(&path, "![image](private.png)").unwrap();
         fs::write(outside.join("private.png"), b"private").unwrap();
-        let loaded = super::load(&path, "1".into()).unwrap();
+        let loaded = super::load(&path, "1".into(), None).unwrap();
         fs::rename(&docs, dir.path().join("original")).unwrap();
         std::os::unix::fs::symlink(&outside, &docs).unwrap();
         assert!(loaded.images.resolve(0).is_err());
@@ -529,7 +574,7 @@ mod tests {
         fs::write(&path, "# Texto primero\n\n![Café](imagen%20%C3%B1.png)").unwrap();
         // Create the image only after load returns. Its bytes cannot have been
         // read or its absence rejected while preparing the initial HTML.
-        let loaded = super::load(&path, "42".into()).unwrap();
+        let loaded = super::load(&path, "42".into(), None).unwrap();
         assert!(loaded.document.html.contains("<h1>Texto primero</h1>"));
         assert!(loaded.document.html.contains("#local-image-42-0"));
         assert!(loaded.document.html.contains("alt=\"Café\""));
@@ -553,7 +598,7 @@ mod tests {
         fs::write(docs.join("valid.png"), b"image").unwrap();
         let path = docs.join("reading.md");
         fs::write(&path, "![escape](../outside.png)\n![missing](missing.png)\n![type](secret.txt)\n![valid](valid.png)\n![absolute](/outside.png)\n![file](file:///etc/passwd)\n![windows](C:/outside.png)\n![http](http://example.com/a.png)\n![https](https://example.com/a.png)").unwrap();
-        let loaded = super::load(&path, "1".into()).unwrap();
+        let loaded = super::load(&path, "1".into(), None).unwrap();
         assert_eq!(loaded.images.sources.len(), 4);
         for index in 0..3 {
             assert!(loaded.images.resolve(index).is_err());
@@ -590,7 +635,7 @@ mod tests {
         }
         fs::write(dir.path().join("empty.png"), b"").unwrap();
         fs::write(&path, "![large](large.png)\n![0](0.png)\n![1](1.png)\n![2](2.png)\n![3](3.png)\n![4](4.png)\n![empty](empty.png)").unwrap();
-        let images = Arc::new(super::load(&path, "1".into()).unwrap().images);
+        let images = Arc::new(super::load(&path, "1".into(), None).unwrap().images);
         assert!(images.resolve(0).is_err());
         assert_eq!(images.budget.lock().unwrap().0, MAX_TOTAL_IMAGE_BYTES);
         let threads: Vec<_> = (1..=5)
@@ -617,13 +662,13 @@ mod tests {
         fs::write(dir.path().join("image.png"), b"image").unwrap();
         let mut store = ImageStore::default();
         let first = store.begin();
-        store.publish(super::load(&path, first.clone()).unwrap());
+        store.publish(super::load(&path, first.clone(), None).unwrap());
         store.activate(&first).unwrap();
         let old = store.get(&first).unwrap();
         let second = store.begin();
-        let second_load = super::load(&path, second.clone()).unwrap();
+        let second_load = super::load(&path, second.clone(), None).unwrap();
         let third = store.begin();
-        store.publish(super::load(&path, third.clone()).unwrap());
+        store.publish(super::load(&path, third.clone(), None).unwrap());
         store.publish(second_load);
         // Publishing a response is not evidence the UI accepted it.
         assert!(store.get(&first).is_ok());
@@ -652,10 +697,10 @@ mod tests {
         fs::write(dir.path().join("image.png"), b"image").unwrap();
         let mut store = ImageStore::default();
         let visible = store.begin();
-        store.publish(super::load(&path, visible.clone()).unwrap());
+        store.publish(super::load(&path, visible.clone(), None).unwrap());
         store.activate(&visible).unwrap();
         let discarded = store.begin();
-        store.publish(super::load(&path, discarded.clone()).unwrap());
+        store.publish(super::load(&path, discarded.clone(), None).unwrap());
         assert!(store.get(&discarded).is_err());
         assert!(store.get(&visible).unwrap().resolve(0).is_ok());
     }

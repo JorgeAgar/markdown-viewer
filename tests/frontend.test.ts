@@ -67,7 +67,7 @@ async function settle(): Promise<void> {
 }
 
 function rendered(name: string): RenderedDocument {
-  return { id: name, name, path: `/documents/${name}`, html: `<h1 id="${name}">${name}</h1><p>Contents of ${name}</p>`, bytes: 2048 };
+  return { id: name, name, path: `/documents/${name}`, html: `<h1 id="${name}">${name}</h1><p>Contents of ${name}</p>`, bytes: 2048, opening_metrics: null };
 }
 
 async function createViewer(t: TestContext, finishStartup = true) {
@@ -881,4 +881,109 @@ test('with 100 tabs, queued Mermaid work belongs to the active tab while another
   viewer.element('tabs').querySelectorAll<HTMLButtonElement>('.tab-close')[1]!.click();
   await settle();
   assert.deepEqual(sources, ['graph TD; Doc0-->X', 'graph TD; Doc99-->X']);
+});
+
+test('opt-in phases correlate repeated opens and preserve the startup command', async t => {
+  const viewer = await createViewer(t);
+  for (const id of ['first', 'second']) {
+    const doc = { ...rendered('same.md'), id, opening_metrics: JSON.stringify({ opening_id: id, source: 'drop', origin_to_response_ms: 3 }) };
+    await viewer.load(doc);
+    await viewer.paint();
+    const report = viewer.tauri.take('opening_painted');
+    assert.equal(report.args.documentId, id);
+    const metrics = JSON.parse(report.args.frontendMetrics);
+    assert.equal(metrics.backend.opening_id, id);
+    for (const field of ['request_roundtrip_ms', 'insertion_ms', 'prepare_document_ms', 'prepare_controllers_ms', 'receive_to_opportunity_ms']) {
+      assert.ok(metrics[field] >= 0, field);
+    }
+    report.resolve(null);
+    await settle();
+    const legacy = viewer.tauri.take('content_painted');
+    assert.equal(legacy.args.hasDocument, true);
+    legacy.resolve(12);
+    await settle();
+  }
+});
+
+test('stale results and tabs hidden before their first opportunity do not report phases', async t => {
+  const viewer = await createViewer(t);
+  const timed = (id: string) => ({ ...rendered(id), opening_metrics: JSON.stringify({ opening_id: id }) });
+  const stale = viewer.drop('/stale.md');
+  const latest = viewer.drop('/latest.md');
+  stale.resolve(timed('stale'));
+  latest.resolve(timed('latest'));
+  await settle();
+  await viewer.load(timed('newest'));
+  await viewer.paint();
+  const report = viewer.tauri.take('opening_painted');
+  assert.equal(report.args.documentId, 'newest');
+  report.resolve(null);
+  await settle();
+  viewer.tauri.take('content_painted').resolve(20);
+  await settle();
+  const old = viewer.window.document.querySelector<HTMLButtonElement>('[role="tab"]')!;
+  old.click();
+  await viewer.paint();
+  assert.equal(viewer.tauri.calls.filter(call => call.command === 'opening_painted').length, 1);
+});
+
+test('picker timing excludes the frontend dialog roundtrip', async t => {
+  const viewer = await createViewer(t);
+  viewer.element('open').click();
+  viewer.tauri.take('choose_document').resolve({ ...rendered('picked'), opening_metrics: JSON.stringify({ source: 'picker', opening_id: 'picked' }) });
+  await settle();
+  await viewer.paint();
+  const report = viewer.tauri.take('opening_painted');
+  assert.equal(JSON.parse(report.args.frontendMetrics).request_roundtrip_ms, null);
+  report.resolve(null);
+  await settle();
+  viewer.tauri.take('content_painted').resolve(10);
+  await settle();
+});
+
+test('initial and OS documents keep backend identity and omit an ambiguous JS roundtrip', async t => {
+  const viewer = await createViewer(t, false);
+  const timed = (id: string, source: string) => ({ ...rendered(id), opening_metrics: JSON.stringify({ opening_id: id, source }) });
+  viewer.startup.resolve(timed('initial', 'initial'));
+  await settle();
+  for (const source of ['initial', 'os']) {
+    if (source === 'os') {
+      viewer.tauri.emit('file-pending', null);
+      viewer.tauri.take('take_pending_document').resolve(timed('os', 'os'));
+      await settle();
+    }
+    await viewer.paint();
+    const report = viewer.tauri.take('opening_painted');
+    const metrics = JSON.parse(report.args.frontendMetrics);
+    assert.equal(report.args.documentId, source);
+    assert.equal(metrics.backend.source, source);
+    assert.equal(metrics.request_roundtrip_ms, null);
+    report.resolve(null);
+    viewer.tauri.take('content_painted').resolve(15);
+    await settle();
+  }
+});
+
+test('closing a measured document before frames prevents a delayed acknowledgement', async t => {
+  const viewer = await createViewer(t);
+  await viewer.load({ ...rendered('closed'), opening_metrics: JSON.stringify({ opening_id: 'closed' }) });
+  viewer.keyboard('w', { ctrlKey: true });
+  await viewer.paint();
+  assert.equal(viewer.tauri.calls.some(call => call.command === 'opening_painted'), false);
+  assert.equal(viewer.tauri.calls.some(call => call.command === 'content_painted'), false);
+});
+
+test('switching away and back before frames discards the latest opening rather than counting hidden time', async t => {
+  const viewer = await createViewer(t);
+  await viewer.load(rendered('existing'));
+  await viewer.paint();
+  viewer.tauri.take('content_painted').resolve(10);
+  await settle();
+  await viewer.load({ ...rendered('latest'), opening_metrics: JSON.stringify({ opening_id: 'latest' }) });
+  const buttons = viewer.window.document.querySelectorAll<HTMLButtonElement>('[role="tab"]');
+  buttons[0]!.click();
+  buttons[1]!.click();
+  await viewer.paint();
+  assert.equal(viewer.tauri.calls.filter(call => call.command === 'content_painted').length, 1);
+  assert.equal(viewer.tauri.calls.some(call => call.command === 'opening_painted'), false);
 });

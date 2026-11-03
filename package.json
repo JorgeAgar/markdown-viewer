@@ -10,7 +10,7 @@
     "build:binary": "tauri build --no-bundle",
     "build:linux": "pnpm build:binary && pnpm package:linux",
     "package:linux": "node scripts/package-linux.mjs",
-    "test": "pnpm test:release && pnpm check:ipc && pnpm test:frontend && cargo test --manifest-path src-tauri/Cargo.toml",
+    "test": "pnpm test:release && node --test scripts/benchmark-metrics.test.mjs && pnpm check:ipc && pnpm test:frontend && cargo test --manifest-path src-tauri/Cargo.toml",
     "check": "pnpm check:version && pnpm check:e2e && pnpm check:ipc && pnpm build:frontend && node --check scripts/frontend.mjs && node --check scripts/package-linux.mjs && cargo fmt --manifest-path scripts/ipc-contract/Cargo.toml -- --check && cargo fmt --manifest-path src-tauri/Cargo.toml -- --check && cargo clippy --manifest-path scripts/ipc-contract/Cargo.toml --all-targets -- -D warnings && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
     "benchmark": "node scripts/benchmark.mjs",
     "build:frontend": "node scripts/frontend.mjs",

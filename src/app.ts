@@ -4,6 +4,8 @@ import { LocalImageController } from './local-images';
 import { MathController } from './math';
 import { SyntaxController } from './syntax';
 
+const uiStarted = performance.now();
+
 /* Document HTML is sanitized in Rust; generated SVG is sanitized separately. */
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
@@ -38,6 +40,7 @@ interface DocumentTab {
   syntax: SyntaxController;
   scrollTop: number;
   afterPaint: () => void;
+  openingVisible: boolean;
 }
 
 const tabs: DocumentTab[] = [];
@@ -105,6 +108,7 @@ function renderTabs(): void {
 function selectTab(tab: DocumentTab, focusTab = false): void {
   if (activeTab !== tab) {
     if (activeTab) {
+      activeTab.openingVisible = false;
       activeTab.work.setActive(false);
       activeTab.scrollTop = reader.scrollTop;
       activeTab.article.hidden = true;
@@ -170,7 +174,10 @@ function closeTab(tab: DocumentTab): void {
   if (hadFocus && activeTab) activeTab.button.focus({ preventScroll: true });
 }
 
-function addTab(doc: RenderedDocument, openingId: number): void {
+function addTab(doc: RenderedDocument, openingId: number, received: number, requestStarted: number, command: string): void {
+  const metrics = doc.opening_metrics ? JSON.parse(doc.opening_metrics) as Record<string, unknown> : undefined;
+  const stamp = () => metrics ? performance.now() : 0;
+  const domStarted = stamp();
   const root = tabs.length ? document.createElement('article') : article;
   const key = ++nextTabKey;
   root.id = `document-${key}`;
@@ -180,7 +187,9 @@ function addTab(doc: RenderedDocument, openingId: number): void {
   const { html, ...metadata } = doc;
   root.innerHTML = html;
   delete root.dataset.readyMs;
+  const inserted = stamp();
   prepareDocument(root);
+  const prepared = stamp();
   if (!root.isConnected) reader.append(root);
   const work = documentWork.document(root, false);
   const diagrams = new MermaidController(root, undefined, undefined, work);
@@ -191,6 +200,7 @@ function addTab(doc: RenderedDocument, openingId: number): void {
   const renderDiagrams = diagrams.prepare();
   const renderMath = math.prepare();
   const highlightCode = syntax.prepare();
+  const controllersPrepared = stamp();
   const item = document.createElement('div');
   item.className = 'tab-item';
   item.setAttribute('role', 'presentation');
@@ -210,8 +220,29 @@ function addTab(doc: RenderedDocument, openingId: number): void {
   let enhanced = false;
   let measured = false;
   const tab: DocumentTab = {
-    work, key, doc: metadata, article: root, item, button, diagrams, images, math, syntax, scrollTop: 0,
+    work, key, doc: metadata, article: root, item, button, diagrams, images, math, syntax, scrollTop: 0, openingVisible: true,
     afterPaint: () => {
+      if (!measured && openingId === requestId && tab.openingVisible && tabs.includes(tab)) {
+        measured = true;
+        const opportunity = metrics ? performance.now() : 0;
+        void invoke('content_painted', { hasDocument: true }).then(elapsed => {
+          if (activeTab === tab && openingId === requestId) root.dataset.readyMs = elapsed.toFixed(2);
+        }).catch(console.error);
+        if (metrics) {
+          void invoke('opening_painted', { documentId: doc.id, frontendMetrics: JSON.stringify({
+            backend: metrics,
+            // Only drop has a JS origin that excludes waiting for user input.
+            request_roundtrip_ms: command === 'open_document' ? received - requestStarted : null,
+            ui_setup_ms: uiSetupMs,
+            receive_to_dom_ms: domStarted - received,
+            insertion_ms: inserted - domStarted,
+            prepare_document_ms: prepared - inserted,
+            prepare_controllers_ms: controllersPrepared - prepared,
+            interface_and_frames_ms: opportunity - controllersPrepared,
+            receive_to_opportunity_ms: opportunity - received,
+          }) }).catch(console.error);
+        }
+      }
       if (!enhanced) {
         enhanced = true;
         loadImages();
@@ -219,11 +250,6 @@ function addTab(doc: RenderedDocument, openingId: number): void {
         renderMath();
         highlightCode();
       }
-      if (measured || openingId !== requestId) return;
-      measured = true;
-      void invoke('content_painted', { hasDocument: true }).then(elapsed => {
-        if (activeTab === tab && openingId === requestId) root.dataset.readyMs = elapsed.toFixed(2);
-      }).catch(console.error);
     },
   };
   button.addEventListener('click', () => selectTab(tab, true));
@@ -246,7 +272,8 @@ function addTab(doc: RenderedDocument, openingId: number): void {
   selectTab(tab);
 }
 
-async function openDocument(operation: () => Promise<RenderedDocument | null>): Promise<void> {
+async function openDocument(operation: () => Promise<RenderedDocument | null>, command = 'other'): Promise<void> {
+  const requestStarted = performance.now();
   const id = ++requestId;
   error.hidden = true;
   statusLabel.textContent = 'Abriendo…';
@@ -257,7 +284,7 @@ async function openDocument(operation: () => Promise<RenderedDocument | null>): 
       statusLabel.textContent = activeTab ? 'Solo lectura' : 'Listo para leer';
       return;
     }
-    addTab(doc, id);
+    addTab(doc, id, performance.now(), requestStarted, command);
   } catch (message) {
     if (id !== requestId) return;
     showError(message);
@@ -332,7 +359,7 @@ async function start(): Promise<void> {
     listen('tauri://drag-drop', ({ payload }) => {
       dropZone.hidden = true;
       const path = payload.paths[0];
-      if (path) openDocument(() => invoke('open_document', { path }));
+      if (path) openDocument(() => invoke('open_document', { path }), 'open_document');
     }),
   ]);
   const initialDocument = await invoke('take_pending_document');
@@ -340,6 +367,7 @@ async function start(): Promise<void> {
     await openDocument(() => Promise.resolve(initialDocument));
   }
 }
+const uiSetupMs = performance.now() - uiStarted;
 start().catch((message) => {
   // Any user or OS opening supersedes the initial pending-file read.
   if (requestId === 0) showError(message);

@@ -6,6 +6,7 @@ interface RenderedDocument {
   name: string;
   html: string;
   bytes: number;
+  opening_metrics: string | null;
 }
 
 interface ViewerCommands {
@@ -18,6 +19,7 @@ interface ViewerCommands {
   resolve_document_image: { args: { documentId: string; imageId: number }; result: string };
   open_link: { args: { href: string }; result: null };
   content_painted: { args: { hasDocument: boolean }; result: number };
+  opening_painted: { args: { documentId: string; frontendMetrics: string }; result: null };
 }
 
 interface ViewerEvents {
