@@ -42,7 +42,7 @@ El workflow `Release desktop` de `.github/workflows/release.yml`:
 
 1. Comprueba que las cuatro versiones coinciden con el tag, que las notas existen y que el commit pertenece al historial de `main`.
 2. Llama al mismo workflow `Build desktop` usado por el CI, desde el commit etiquetado. Ejecuta checks, pruebas, empaquetado y validaciones de Linux, incluidos los benchmarks de arranque.
-3. Descarga los cuatro paquetes: `.deb`, `.exe`, `.dmg` y `.tar.gz` de Arch. No adjunta los registros de validación como instaladores.
+3. Descarga los tres paquetes: `.exe`, `.dmg` y un único `.tar.gz` de Linux. No adjunta los registros de validación como instaladores.
 4. Genera `SHA256SUMS`, crea una release en borrador, sube los archivos y la publica como la más reciente solo si todo lo anterior tuvo éxito.
 
 Los builds tienen permisos de lectura. Solo el job de publicación recibe `contents: write`, mediante el `GITHUB_TOKEN` del repositorio. No requiere un token personal ni nuevos secretos. El repositorio debe permitir GitHub Actions y estos permisos de escritura para el job de publicación.

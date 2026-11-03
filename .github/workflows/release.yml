@@ -61,11 +61,11 @@ jobs:
               mv -- "$package" "$normalized"
             fi
           done
-          for extension in deb exe dmg tar.gz; do
+          for extension in exe dmg tar.gz; do
             count=$(find . -type f -name "*.$extension" | wc -l)
             test "$count" -eq 1
           done
-          test "$(find . -type f | wc -l)" -eq 4
+          test "$(find . -type f | wc -l)" -eq 3
           find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
           sha256sum --check SHA256SUMS
       - name: Upload packages and publish release

@@ -1,10 +1,18 @@
-# Markdown Viewer para Arch Linux
+# Markdown Viewer para Linux
 
-Build para Arch Linux actualizado, arquitectura x86_64. Usa GTK y WebKitGTK del sistema; el tar no incluye esas bibliotecas. No necesitas Rust, Node.js ni pnpm para ejecutar la aplicación.
+Build Linux x86_64 compilada en Ubuntu 22.04 y validada en Ubuntu y Arch Linux. Usa GTK y WebKitGTK del sistema; el tar no incluye esas bibliotecas. No necesitas Rust, Node.js ni pnpm para ejecutar la aplicación.
 
 ## Dependencias
 
-Actualiza el sistema e instala WebKitGTK, que también instala GTK y sus dependencias:
+Necesita glibc 2.35 o posterior, GTK 3 y WebKitGTK 4.1 (API con libsoup 3). No es un paquete estático ni sirve para distribuciones con musl, como Alpine.
+
+En Ubuntu 22.04 o posterior y Debian 12 o posterior:
+
+```sh
+sudo apt-get install libwebkit2gtk-4.1-0
+```
+
+En Arch Linux actualizado:
 
 ```sh
 sudo pacman -Syu --needed webkit2gtk-4.1
@@ -31,7 +39,7 @@ sudo install -Dm644 markdown-viewer.desktop /usr/local/share/applications/markdo
 sudo update-desktop-database /usr/local/share/applications
 ```
 
-`update-desktop-database` pertenece al paquete `desktop-file-utils`. Instálalo con `sudo pacman -S --needed desktop-file-utils` si el comando no está disponible.
+`update-desktop-database` pertenece al paquete `desktop-file-utils`. Instálalo con `sudo apt-get install desktop-file-utils` o `sudo pacman -S --needed desktop-file-utils` si el comando no está disponible.
 
 El visor aparecerá en el menú de aplicaciones y en «Abrir con» para Markdown. El sistema decide la aplicación predeterminada; estos comandos no la cambian.
 

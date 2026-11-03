@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       linux_only:
-        description: 'Run only Ubuntu and Arch Linux builds and validation'
+        description: 'Run only the Linux build and Ubuntu/Arch validation'
         type: boolean
         default: false
 
@@ -49,7 +49,12 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: pnpm test
-      - run: pnpm run build --bundles ${{ runner.os == 'Linux' && 'deb' || runner.os == 'Windows' && 'nsis' || 'dmg' }}
+      - name: Build Linux tarball
+        if: runner.os == 'Linux'
+        run: pnpm build:linux
+      - name: Build Windows or macOS installer
+        if: runner.os != 'Linux'
+        run: pnpm run build --bundles ${{ runner.os == 'Windows' && 'nsis' || 'dmg' }}
       - name: Test Linux WebView and measure startup
         if: runner.os == 'Linux'
         env:
@@ -57,13 +62,25 @@ jobs:
         run: |
           sudo apt-get install -y webkit2gtk-driver xvfb xdotool
           cargo install tauri-driver --locked
+          mkdir -p artifacts/linux-extracted
+          tar -xzf artifacts/packages/*.tar.gz -C artifacts/linux-extracted
+          export MD_VIEWER_BINARY="$(find "$PWD/artifacts/linux-extracted" -type f -name markdown-viewer)"
+          test -x "$MD_VIEWER_BINARY"
+          ldd "$MD_VIEWER_BINARY" | tee artifacts/linux-ldd.txt
+          if grep -q 'not found' artifacts/linux-ldd.txt; then exit 1; fi
           xvfb-run -a dbus-run-session -- pnpm test:e2e
           xvfb-run -a dbus-run-session -- pnpm run benchmark examples/bienvenido.md 5 > artifacts/benchmark.txt
       - uses: actions/upload-artifact@v4
+        if: runner.os == 'Linux'
+        with:
+          name: markdown-viewer-Linux
+          path: artifacts/packages/*.tar.gz
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: runner.os != 'Linux'
         with:
           name: markdown-viewer-${{ runner.os }}
           path: |
-            src-tauri/target/release/bundle/deb/*.deb
             src-tauri/target/release/bundle/nsis/*.exe
             src-tauri/target/release/bundle/dmg/*.dmg
           if-no-files-found: error
@@ -73,7 +90,8 @@ jobs:
           name: linux-validation
           path: artifacts/
 
-  build-arch:
+  validate-arch:
+    needs: build
     runs-on: ubuntu-22.04
     container:
       image: archlinux:base-devel
@@ -85,30 +103,18 @@ jobs:
     steps:
       - name: Arch dependencies
         run: |
-          pacman -Syu --noconfirm --needed git curl wget file webkit2gtk-4.1 \
+          pacman -Syu --noconfirm --needed git webkit2gtk-4.1 \
             libappindicator-gtk3 librsvg dbus xorg-server-xvfb xorg-xauth ttf-dejavu
           useradd --create-home arch-test
       - uses: actions/checkout@v4
-      # The base Arch image has no Node on PATH for pnpm's installer.
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - uses: pnpm/action-setup@v4
+      - uses: actions/download-artifact@v4
         with:
-          version: 12.4.2
-          cache: true
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri -> target
-          key: arch-x86_64
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm check
-      - run: pnpm test
-      - run: pnpm build:arch
-      - name: Validate extracted Arch package and measure startup
+          name: markdown-viewer-Linux
+          path: artifacts/packages
+      - name: Validate Linux tarball on Arch and measure startup
         env:
           WEBKIT_DISABLE_DMABUF_RENDERER: '1'
         run: |
@@ -123,11 +129,6 @@ jobs:
           runuser -u arch-test -- env MD_VIEWER_BINARY="$binary" \
             xvfb-run -a dbus-run-session -- node scripts/benchmark.mjs \
             examples/bienvenido.md 5 > artifacts/benchmark.txt
-      - uses: actions/upload-artifact@v4
-        with:
-          name: markdown-viewer-Arch-x86_64
-          path: artifacts/packages/*.tar.gz
-          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: always()
         with:
