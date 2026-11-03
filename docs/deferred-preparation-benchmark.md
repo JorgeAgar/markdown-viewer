@@ -1,6 +1,6 @@
 # Comparación release: preparación diferida
 
-Base exacta `ff37cb9` frente a esta rama, ambas con `pnpm build:binary` (release optimizado, sin cambios de perfil). Linux 7.2.11-arch1-1 x86_64, Intel Core i5-1334U, sesión gráfica existente, 2026-11-03. Cinco procesos nuevos secuenciales por muestra, suite small/large/rich de #22; base primero y candidata después. Modo de métricas idéntico, sin garantía de cachés frías ni aislamiento de carga del escritorio/equipo (otro trabajo compilaba concurrentemente). No se modificó main.rs.
+Comparación histórica: base exacta `ff37cb9` frente a la candidata `c972b22`, antes de integrar la precarga de #23 desde `main`. Ambas compiladas con `pnpm build:binary` (release optimizado, sin cambios de perfil). Linux 7.2.11-arch1-1 x86_64, Intel Core i5-1334U, sesión gráfica existente, 2026-11-03. Cinco procesos nuevos secuenciales por muestra, suite small/large/rich de #22; base primero y candidata después. Modo de métricas idéntico, sin garantía de cachés frías ni aislamiento de carga del escritorio/equipo (otro trabajo compilaba concurrentemente). En esa comparación no se modificó main.rs. Estos resultados aíslan el cambio de preparación diferida y no representan el rendimiento combinado del head posterior a la integración de #23.
 
 Medianas en ms; cada celda muestra **base → candidata**.
 
