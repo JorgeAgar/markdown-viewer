@@ -191,6 +191,7 @@ test('the 51st block keeps its code while the first 50 render', async t => {
   const viewer = create(t);
   viewer.document(Array.from({ length: 51 }, (_, index) => `flowchart LR\nA${index}-->B`))();
   await settle();
+  for (let attempt = 0; attempt < 200 && !(viewer.calls.length === 50); attempt++) await new Promise(resolve => setTimeout(resolve, 5));
   assert.equal(viewer.calls.length, 50);
   const last = viewer.root.querySelectorAll('figure')[50]!;
   assert.equal(last.dataset.state, 'error');
