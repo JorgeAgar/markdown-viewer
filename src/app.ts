@@ -187,6 +187,9 @@ function addTab(doc: RenderedDocument, openingId: number, received: number, requ
   const { html, ...metadata } = doc;
   root.innerHTML = html;
   delete root.dataset.readyMs;
+  delete root.dataset.deferredPreparationMs;
+  if (metrics) root.dataset.measurePreparation = 'true';
+  else delete root.dataset.measurePreparation;
   const inserted = stamp();
   prepareDocument(root);
   const prepared = stamp();

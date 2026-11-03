@@ -112,11 +112,11 @@ Las imágenes deben usar HTTPS, datos Base64 de un formato admitido o un marcado
 
 El HTML se inserta con `innerHTML` porque tiene etiquetas que el WebView debe interpretar. El nombre del archivo y los errores usan `textContent`, que los muestra como texto. La limpieza previa en Rust es parte necesaria del recorrido del HTML.
 
-Después, `MermaidController.prepare` encuentra `pre > code.language-mermaid` y conserva su `textContent` en una figura con un desplegable "Ver código". Devuelve una función que activa el renderizado tras la oportunidad de primer pintado. `openDocument` no espera los diagramas para terminar la apertura.
+Después de la oportunidad de pintado, el callback de `MermaidController.prepare` encuentra `pre > code.language-mermaid` y conserva su `textContent` en una figura con un desplegable "Ver código". El descubrimiento y la creación de figuras avanzan en lotes de 32, suspendidos en pestañas ocultas; después comienza el renderizado. `openDocument` no espera los diagramas para terminar la apertura.
 
 Mermaid se carga en un módulo local diferido. Cada SVG se limpia antes de insertarlo mediante `replaceChildren`. Un error muestra un aviso dentro de su figura y deja el código abierto. Una cola evita renderizados simultáneos y comprueba la generación del documento y del tema antes y después de cada espera. Consulta [Mermaid](mermaid.md) para los límites y la política de estilos.
 
-`MathController.prepare` recoge los marcadores de fórmulas que dejó Rust. Después del primer pintado carga KaTeX y su CSS local, da prioridad a las fórmulas visibles y procesa lotes de ocho. Conserva el TeX si falla una fórmula y descarta resultados de documentos reemplazados. La salida incluye MathML y se limpia antes de insertarla como nodos mediante `replaceChildren`. Consulta [LaTeX](latex.md) para sintaxis, límites y CSP.
+El callback de `MathController.prepare` recoge los marcadores de fórmulas que dejó Rust después de la oportunidad de pintado, en lotes de 32 suspendidos en pestañas ocultas. Después carga KaTeX y su CSS local, da prioridad a las fórmulas visibles y procesa lotes de ocho. Conserva el TeX si falla una fórmula y descarta resultados de documentos reemplazados. La salida incluye MathML y se limpia antes de insertarla como nodos mediante `replaceChildren`. Consulta [LaTeX](latex.md) para sintaxis, límites y CSP.
 
 ## 6. Cómo funcionan los enlaces y el diseño
 

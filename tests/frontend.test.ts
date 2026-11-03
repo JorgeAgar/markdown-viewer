@@ -127,11 +127,12 @@ async function createViewer(t: TestContext, finishStartup = true) {
     assert.equal(element<HTMLButtonElement>('open').disabled, disabled);
     assert.equal(element<HTMLButtonElement>('empty-open').disabled, disabled);
   }
+  function frame() {
+    frames.splice(0).forEach(callback => callback(0));
+  }
   async function paint() {
-    for (let frame = 0; frame < 2; frame++) {
-      const callbacks = frames.splice(0);
-      callbacks.forEach((callback) => callback(frame));
-    }
+    frame();
+    frame();
     await settle();
   }
 
@@ -144,7 +145,7 @@ async function createViewer(t: TestContext, finishStartup = true) {
     await settle();
   }
   function changeTheme(dark: boolean) { themeListeners.forEach(listener => listener({ matches: dark } as MediaQueryListEvent)); }
-  return { window, tauri, startup, element, keyboard, drop, load, assertDocument, assertButtons, paint, changeTheme };
+  return { window, tauri, startup, element, keyboard, drop, load, assertDocument, assertButtons, paint, frame, changeTheme };
 }
 
 test('startup without a pending file leaves the empty view ready', async (t) => {
@@ -893,6 +894,7 @@ test('opt-in phases correlate repeated opens and preserve the startup command', 
     assert.equal(report.args.documentId, id);
     const metrics = JSON.parse(report.args.frontendMetrics);
     assert.equal(metrics.backend.opening_id, id);
+    assert.ok(Number(viewer.element('document').dataset.deferredPreparationMs) >= 0);
     for (const field of ['request_roundtrip_ms', 'insertion_ms', 'prepare_document_ms', 'prepare_controllers_ms', 'receive_to_opportunity_ms']) {
       assert.ok(metrics[field] >= 0, field);
     }
@@ -986,4 +988,64 @@ test('switching away and back before frames discards the latest opening rather t
   await viewer.paint();
   assert.equal(viewer.tauri.calls.filter(call => call.command === 'content_painted').length, 1);
   assert.equal(viewer.tauri.calls.some(call => call.command === 'opening_painted'), false);
+});
+
+test('optional discovery waits for text opportunity while IDs, inputs and image policy are ready', async t => {
+  const viewer = await createViewer(t);
+  const doc = { ...rendered('deferred.md'), html: '<h2>Áncla uno</h2><h2>Áncla uno</h2><input type="text"><img src="http://blocked.invalid/a"><pre><code class="language-mermaid"><a href="#áncla-uno">graph LR</a>\nA-->B</code></pre><span class="math math-inline">x</span>' };
+  await viewer.load(doc);
+  const root = viewer.element('document');
+  assert.deepEqual([...root.querySelectorAll('h2')].map(h => h.id), ['áncla-uno', 'áncla-uno-1']);
+  assert.equal(root.querySelector('input')!.disabled, true);
+  assert.equal(root.querySelector('input')!.type, 'checkbox');
+  assert.equal(root.querySelector('img')!.hasAttribute('src'), false);
+  const focused = root.querySelector('a')!;
+  focused.focus();
+  assert.equal(root.querySelector('figure'), null);
+  assert.equal(root.querySelector('.math')!.getAttribute('data-math-state'), null);
+  assert.equal(viewer.window.__mermaidLoads, undefined);
+  assert.equal(viewer.window.__mathLoads, undefined);
+  viewer.frame();
+  await settle();
+  assert.equal(root.querySelector('figure'), null);
+  assert.equal(root.querySelector('.math')!.getAttribute('data-math-state'), null);
+  viewer.window.__renderMermaidForTests = async () => viewer.window.document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  viewer.window.__renderMathForTests = async () => viewer.window.document.createElement('span');
+  await viewer.paint();
+  viewer.tauri.take('content_painted').resolve(1);
+  assert.ok(root.querySelector('figure'));
+  assert.equal(viewer.window.document.activeElement, focused);
+  assert.equal(root.dataset.deferredPreparationMs, undefined);
+  assert.ok(root.querySelector('.math')!.getAttribute('data-math-state')); // discovery has started
+  assert.equal(viewer.window.__mathLoads, 1);
+});
+
+test('discovery batches pause in hidden tabs, resume once and cancel on close', async t => {
+  const viewer = await createViewer(t);
+  // Hold batch yields deterministically, independently of machine speed.
+  const resumes: (() => void)[] = [];
+  viewer.window.setTimeout = ((callback: () => void) => { resumes.push(callback); return 1; }) as typeof viewer.window.setTimeout;
+  viewer.window.__renderMermaidForTests = async () => viewer.window.document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  const rich = { ...rendered('batches.md'), html: '<pre><code class="language-mermaid">graph LR\nA-->B</code></pre>'.repeat(100) };
+  await viewer.load(rich);
+  const root = viewer.element('document');
+  await viewer.paint();
+  viewer.tauri.take('content_painted').resolve(1);
+  assert.equal(root.querySelectorAll('figure').length, 32);
+  assert.equal(viewer.window.__mermaidLoads, undefined);
+  await viewer.load(rendered('other.md'));
+  await viewer.paint();
+  viewer.tauri.take('content_painted').resolve(2);
+  resumes.splice(0).forEach(resume => resume());
+  await settle();
+  assert.equal(root.querySelectorAll('figure').length, 32);
+  viewer.element('tabs').querySelector<HTMLButtonElement>('[role="tab"]')!.click();
+  assert.equal(root.querySelectorAll('figure').length, 32);
+  await viewer.paint();
+  assert.equal(root.querySelectorAll('figure').length, 64);
+  viewer.keyboard('w', { ctrlKey: true });
+  resumes.splice(0).forEach(resume => resume());
+  await settle();
+  assert.equal(root.querySelectorAll('figure').length, 64);
+  assert.equal(viewer.window.__mermaidLoads, undefined);
 });

@@ -1,3 +1,4 @@
+import { deferredPreparation } from './deferred-preparation';
 import { documentWork, type DocumentWork } from './work-scheduler';
 
 export type DiagramTheme = 'light' | 'dark';
@@ -61,43 +62,48 @@ export class MermaidController {
     this.schedule(generation);
   };
 
-  /** Prepare synchronously, then invoke the returned callback after text paint. */
+  /** Discovery and DOM transformations start only from the after-paint callback. */
   prepare(): () => void {
     const generation = ++this.generation;
     this.work.invalidate();
     this.painted = false;
     delete this.root.dataset.diagramsReadyMs;
     this.blocks = [];
-    const codeBlocks = this.root.querySelectorAll<HTMLElement>('pre > code.language-mermaid');
-    codeBlocks.forEach((code, index) => {
-      const pre = code.parentElement!;
-      const figure = document.createElement('figure');
-      figure.className = 'mermaid-diagram';
-      const display = document.createElement('div');
-      display.className = 'mermaid-svg';
-      const message = document.createElement('p');
-      message.className = 'mermaid-message';
-      message.setAttribute('role', 'status');
-      const details = document.createElement('details');
-      details.open = true;
-      const summary = document.createElement('summary');
-      summary.textContent = 'Ver código';
-      pre.replaceWith(figure);
-      details.append(summary, pre);
-      figure.append(display, message, details);
-      const block = { source: code.textContent ?? '', figure, display, message, details };
-      this.blocks.push(block);
-      if (index >= maxBlocks) this.fail(block, 'Solo se renderizan los primeros 50 diagramas del documento.');
-      else {
-        figure.dataset.state = 'pending';
-        message.textContent = 'Preparando diagrama…';
+    const controller = this;
+    return deferredPreparation(this.root, this.work, () => this.current(generation), function* () {
+      const codeBlocks = controller.root.querySelectorAll<HTMLElement>('pre > code.language-mermaid');
+      let index = 0;
+      for (const code of codeBlocks) {
+        const pre = code.parentElement!;
+        const figure = document.createElement('figure');
+        figure.className = 'mermaid-diagram';
+        const display = document.createElement('div');
+        display.className = 'mermaid-svg';
+        const message = document.createElement('p');
+        message.className = 'mermaid-message';
+        message.setAttribute('role', 'status');
+        const details = document.createElement('details');
+        details.open = true;
+        const summary = document.createElement('summary');
+        summary.textContent = 'Ver código';
+        const focused = pre.contains(document.activeElement) ? document.activeElement : null;
+        pre.replaceWith(figure);
+        details.append(summary, pre);
+        figure.append(display, message, details);
+        if (focused instanceof HTMLElement) focused.focus({ preventScroll: true });
+        const block = { source: code.textContent ?? '', figure, display, message, details };
+        controller.blocks.push(block);
+        if (index >= maxBlocks) controller.fail(block, 'Solo se renderizan los primeros 50 diagramas del documento.');
+        else {
+          figure.dataset.state = 'pending';
+          message.textContent = 'Preparando diagrama…';
+        }
+        index++;
+        yield;
       }
-    });
-    return () => {
-      if (!this.current(generation)) return;
-      this.painted = true;
-      this.schedule(generation);
-    };
+      controller.painted = true;
+      controller.schedule(generation);
+    }, this.pause);
   }
 
   private current(generation: number, block?: DiagramBlock): boolean {

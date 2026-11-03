@@ -1,3 +1,4 @@
+import { deferredPreparation } from './deferred-preparation';
 import { documentWork, type DocumentWork } from './work-scheduler';
 
 export type MathRenderer = (source: string, display: boolean) => HTMLElement | Promise<HTMLElement>;
@@ -32,25 +33,26 @@ export class MathController {
     const generation = ++this.generation;
     this.work.invalidate();
     delete this.root.dataset.mathReadyMs;
-    // Code and Mermaid definitions must remain literal, including raw HTML markers.
-    const elements = [...this.root.querySelectorAll<HTMLElement>('span.math.math-inline, span.math.math-display')]
-      .filter(element => !element.closest('pre, code, .mermaid-diagram'));
-    const formulas: Formula[] = [];
-    elements.forEach((element, index) => {
-      const formula = { element, source: element.textContent ?? '', display: element.classList.contains('math-display') };
-      if (index >= maxFormulas) this.fail(formula, 'Solo se renderizan las primeras 500 fórmulas del documento.');
-      else if (formula.source.length > maxSourceLength) this.fail(formula, 'La fórmula supera el límite de 10.000 caracteres.');
-      else {
-        element.dataset.mathState = 'pending';
-        formulas.push(formula);
+    const controller = this;
+    return deferredPreparation(this.root, this.work, () => this.current(generation), function* () {
+      // Code and Mermaid definitions remain literal, including raw HTML markers.
+      const elements = controller.root.querySelectorAll<HTMLElement>('span.math.math-inline, span.math.math-display');
+      const formulas: Formula[] = [];
+      let index = 0;
+      for (const element of elements) {
+        if (element.closest('pre, code, .mermaid-diagram')) { yield; continue; }
+        const formula = { element, source: element.textContent ?? '', display: element.classList.contains('math-display') };
+        if (index >= maxFormulas) controller.fail(formula, 'Solo se renderizan las primeras 500 fórmulas del documento.');
+        else if (formula.source.length > maxSourceLength) controller.fail(formula, 'La fórmula supera el límite de 10.000 caracteres.');
+        else {
+          element.dataset.mathState = 'pending';
+          formulas.push(formula);
+        }
+        index++;
+        yield;
       }
-    });
-    let started = false;
-    return () => {
-      if (started || !this.current(generation) || formulas.length === 0) return;
-      started = true;
-      void this.run(generation, formulas);
-    };
+      if (formulas.length) void controller.run(generation, formulas);
+    }, this.pause);
   }
 
   private current(generation: number): boolean {

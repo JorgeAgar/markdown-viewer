@@ -130,6 +130,7 @@ test('limits reject large sources before import and preserve excess formulas', a
   assert.equal(viewer.loads, 0);
   viewer.document(Array.from({ length: 501 }, () => 'x'))();
   await settle();
+  for (let attempt = 0; attempt < 200 && !(viewer.calls.length === 500); attempt++) await new Promise(resolve => setTimeout(resolve, 5));
   assert.equal(viewer.calls.length, 500);
   assert.equal(viewer.root.querySelectorAll('[data-math-state="error"]').length, 1);
   assert.equal(viewer.root.lastElementChild!.textContent, 'x');
